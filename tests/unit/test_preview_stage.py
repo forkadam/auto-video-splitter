@@ -43,6 +43,10 @@ def test_preview_generates_html_and_thumbs(tmp_path):
     )
     result = PreviewStage().run(ctx)
     assert result.status == "done"
-    assert (ws / "preview" / "index.html").exists()
+    html_path = ws / "preview" / "index.html"
+    assert html_path.exists()
     images = list((ws / "preview" / "images").glob("scene-*.jpg"))
     assert len(images) == 6     # 2 scenes * 3 images
+    # The <video> src must climb three levels from preview/index.html back to working_root.
+    html = html_path.read_text(encoding="utf-8")
+    assert f'src="../../../{FIXTURE.name}"' in html

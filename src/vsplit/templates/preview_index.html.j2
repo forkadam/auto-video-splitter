@@ -21,7 +21,7 @@
 <div class="meta">
   {{ scenes|length }} scenes · source: {{ source_rel }}
 </div>
-<video controls preload="metadata" src="../{{ source_rel | e }}"></video>
+<video controls preload="metadata" src="../../../{{ source_rel | e }}"></video>
 {% for scene in scenes %}
 <section class="scene" id="scene-{{ '%03d' % scene.id }}">
   <div class="scene-header">
