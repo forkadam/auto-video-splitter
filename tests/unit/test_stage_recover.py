@@ -45,3 +45,10 @@ def test_default_recover_deletes_subdir_and_resets_status(tmp_path):
     assert not (ctx.workspace_dir / "probe").exists()
     assert ctx.manifest.stages["probe"].status == "pending"
     assert ctx.manifest.stages["probe"].artifacts == {}
+
+
+def test_default_recover_clears_set_at(tmp_path):
+    ctx = _ctx(tmp_path / "ws", "probe")
+    ctx.manifest.stages["probe"].set_at = datetime.now(timezone.utc)
+    _Dummy().recover(ctx)
+    assert ctx.manifest.stages["probe"].set_at is None
