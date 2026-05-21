@@ -35,11 +35,17 @@ class PlanStage(Stage):
         cuts = CutsJson.model_validate_json(
             (ctx.workspace_dir / "decisions" / "cuts.json").read_text()
         )
-        keyframes = [
-            float(line) for line in
-            (ctx.workspace_dir / "probe" / "keyframes.csv").read_text().splitlines()
-            if line.strip()
-        ]
+        keyframes = []
+        for line in (ctx.workspace_dir / "probe" / "keyframes.csv").read_text().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            # csv=p=0 may include extra fields (e.g. SEI messages); take first field only
+            first_field = line.split(",")[0]
+            try:
+                keyframes.append(float(first_field))
+            except ValueError:
+                pass
         kept = [s for s in cuts.scenes if s.keep]
 
         # Merge adjacent scenes via merge_with_next

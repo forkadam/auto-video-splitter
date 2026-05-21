@@ -36,8 +36,9 @@ class PreviewStage(Stage):
         scenes_for_template = []
         for scene in scenes_data["scenes"]:
             duration = scene["end_time"] - scene["start_time"]
+            _safe_end = scene["end_time"] - min(0.1, duration * 0.05)
             sample_ts = [
-                scene["start_time"] + duration * (i / max(n - 1, 1))
+                min(scene["start_time"] + duration * (i / max(n - 1, 1)), _safe_end)
                 for i in range(n)
             ] if n > 1 else [scene["start_time"] + duration / 2]
             img_names = []
