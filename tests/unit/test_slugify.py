@@ -40,3 +40,30 @@ def test_resolve_collision_skips_retired():
     existing = set()
     retired = {"birthday"}
     assert resolve_collision("birthday", existing, retired) == "birthday-2"
+
+
+def test_empty_result_falls_back_to_unnamed():
+    assert slugify("<>:.mp4") == "_unnamed"
+    assert slugify("..mp4") == "_unnamed"
+    assert slugify("   .mp4") == "_unnamed"
+
+
+def test_control_chars_are_stripped():
+    assert slugify("a\x00b.mp4") == "ab"
+    assert slugify("\x01\x02hello.mp4") == "hello"
+    assert slugify("tab\there.mp4") == "tab-here"  # \t is whitespace, replaced not stripped
+
+
+def test_truncation_does_not_leave_trailing_hyphen():
+    name = "a" * 63 + "-rest.mp4"
+    s = slugify(name)
+    assert len(s) <= 64
+    assert not s.endswith("-")
+
+
+def test_resolve_collision_respects_max_length():
+    long_slug = "a" * 64
+    existing = {long_slug}
+    result = resolve_collision(long_slug, existing, set())
+    assert len(result) <= 64
+    assert result != long_slug

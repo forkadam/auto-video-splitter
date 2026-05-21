@@ -7,6 +7,7 @@ _RESERVED_NAMES = {
     *(f"com{i}" for i in range(1, 10)),
     *(f"lpt{i}" for i in range(1, 10)),
 }
+_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0e-\x1f\x7f]")
 _RESERVED_CHARS = re.compile(r'[<>:"/\\|?*]')
 _WHITESPACE_UNDERSCORE = re.compile(r"[\s_]+")
 _REPEATED_HYPHEN = re.compile(r"-{2,}")
@@ -15,13 +16,17 @@ _MAX_LEN = 64
 
 def slugify(filename: str) -> str:
     stem = Path(filename).stem.lower()
+    stem = _CONTROL_CHARS.sub("", stem)
     stem = _RESERVED_CHARS.sub("", stem)
     stem = _WHITESPACE_UNDERSCORE.sub("-", stem)
     stem = _REPEATED_HYPHEN.sub("-", stem)
     stem = stem.strip(". -")
     if stem in _RESERVED_NAMES:
         stem = f"_{stem}"
-    return stem[:_MAX_LEN]
+    stem = stem[:_MAX_LEN].strip(". -")
+    if not stem:
+        stem = "_unnamed"
+    return stem
 
 
 def resolve_collision(
@@ -30,7 +35,8 @@ def resolve_collision(
     taken_lower = {s.lower() for s in live} | {s.lower() for s in retired}
     if slug.lower() not in taken_lower:
         return slug
+    base = slug[:_MAX_LEN - 4].rstrip(". -")
     n = 2
-    while f"{slug}-{n}".lower() in taken_lower:
+    while f"{base}-{n}".lower() in taken_lower:
         n += 1
-    return f"{slug}-{n}"
+    return f"{base}-{n}"
