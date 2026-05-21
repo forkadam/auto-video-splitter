@@ -33,6 +33,31 @@ def test_detect_finds_scenes(tmp_path):
     result = DetectStage().run(ctx)
     assert result.status == "done"
     data = json.loads((ws / "detect" / "scenes.json").read_text())
-    assert data["detector"] == "adaptive"
+    assert data["detector"] == "content"     # default detector after v1.1
     assert len(data["scenes"]) >= 2     # fixture has explicit color changes
     assert all("start_time" in s and "end_time" in s for s in data["scenes"])
+
+
+def test_detect_respects_adaptive_choice(tmp_path):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    src = ws / FIXTURE.name
+    shutil.copy(FIXTURE, src)
+    m = new_manifest(
+        slug="ws",
+        source=SourceInfo(relative_path=FIXTURE.name, size_bytes=src.stat().st_size,
+                          mtime=datetime.now(timezone.utc), partial_hash="x"),
+    )
+    save_manifest(ws, m)
+    cfg = Config()
+    cfg.detect.detector = "adaptive"
+    cfg.detect.threshold = 1.5  # adaptive scale, not content's 27
+    ctx = StageContext(
+        workspace_dir=ws, working_root=tmp_path, source_path=src,
+        manifest=m, config=cfg, logger=logging.getLogger("test"),
+        cancel_event=threading.Event(),
+    )
+    result = DetectStage().run(ctx)
+    assert result.status == "done"
+    data = json.loads((ws / "detect" / "scenes.json").read_text())
+    assert data["detector"] == "adaptive"

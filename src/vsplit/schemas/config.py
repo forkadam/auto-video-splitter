@@ -5,6 +5,13 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 class DetectConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    # `threshold` is interpreted in the chosen detector's native scale:
+    #   content   ~0–100 (default 27)
+    #   adaptive  ~0–10  (default 3.0)
+    #   histogram ~0–1   (default 0.05)
+    #   hash      ~0–1   (default 0.395)
+    # Switching detectors usually means picking a new threshold too.
+    detector: Literal["content", "adaptive", "histogram", "hash"] = "content"
     threshold: float = 27.0
     min_scene_length: float = 0.6
     luma_only: bool = False

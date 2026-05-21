@@ -3,6 +3,7 @@ from vsplit.schemas.config import Config
 def test_config_defaults():
     c = Config()
     assert c.detect.threshold == 27.0
+    assert c.detect.detector == "content"
     assert c.review.default_keep is True
     assert c.split.output_container == "mp4"
     assert c.concurrency["split"] == 1
