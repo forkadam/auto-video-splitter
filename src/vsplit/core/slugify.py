@@ -35,8 +35,8 @@ def resolve_collision(
     taken_lower = {s.lower() for s in live} | {s.lower() for s in retired}
     if slug.lower() not in taken_lower:
         return slug
-    base = slug[:_MAX_LEN - 4].rstrip(". -")
-    n = 2
-    while f"{base}-{n}".lower() in taken_lower:
-        n += 1
-    return f"{base}-{n}"
+    base = slug[:_MAX_LEN - 3].rstrip(". -")
+    for n in range(2, 100):
+        if f"{base}-{n}".lower() not in taken_lower:
+            return f"{base}-{n}"
+    raise ValueError(f"more than 99 slug collisions for {slug!r}; rename source files")

@@ -67,3 +67,11 @@ def test_resolve_collision_respects_max_length():
     result = resolve_collision(long_slug, existing, set())
     assert len(result) <= 64
     assert result != long_slug
+
+
+def test_resolve_collision_raises_when_exhausted():
+    import pytest as _pytest
+    base = "x"
+    taken = {base, *(f"{base}-{n}" for n in range(2, 100))}
+    with _pytest.raises(ValueError, match="more than 99 slug collisions"):
+        resolve_collision(base, taken, set())
