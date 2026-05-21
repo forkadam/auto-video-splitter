@@ -22,6 +22,10 @@ class PreviewConfig(BaseModel):
     images_per_scene: int = 3
     image_width: int = 480
     image_quality: int = 85
+    # Browser-playable H.264 proxy generated as preview/source-proxy.mp4.
+    # iPhone clips are typically HEVC, which Chrome/Edge/Firefox can't play
+    # in the <video> element. Set to 0 (or None via YAML) to skip the transcode.
+    proxy_height: int | None = 720
 
 
 class ReviewConfig(BaseModel):

@@ -61,6 +61,25 @@ class PreviewStage(Stage):
                 "images": img_names,
             })
 
+        # Optional H.264 proxy so the <video> element plays in any browser
+        # (iPhone HEVC clips don't play in Chrome/Edge/Firefox).
+        proxy_height = ctx.config.preview.proxy_height
+        proxy_name = "source-proxy.mp4"
+        has_proxy = False
+        if proxy_height and proxy_height > 0:
+            proxy_path = outdir / proxy_name
+            subprocess.run(
+                ["ffmpeg", "-y", "-loglevel", "error",
+                 "-i", str(ctx.source_path),
+                 "-vf", f"scale=-2:{proxy_height}",
+                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
+                 "-c:a", "aac", "-b:a", "96k",
+                 "-movflags", "+faststart",
+                 str(proxy_path)],
+                check=True,
+            )
+            has_proxy = True
+
         env = Environment(
             loader=FileSystemLoader(str(_TEMPLATE_DIR)),
             autoescape=select_autoescape(["html"]),
@@ -70,9 +89,12 @@ class PreviewStage(Stage):
             slug=ctx.manifest.id,
             source_rel=ctx.manifest.source.relative_path,
             scenes=scenes_for_template,
+            has_proxy=has_proxy,
+            proxy_name=proxy_name,
         )
         atomic_write_text(outdir / "index.html", rendered)
 
         return StageResult(artifacts={
             "images_generated": sum(len(s["images"]) for s in scenes_for_template),
+            "proxy_generated": has_proxy,
         })
