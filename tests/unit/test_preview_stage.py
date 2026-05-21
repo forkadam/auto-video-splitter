@@ -19,6 +19,8 @@ def test_preview_generates_html_and_thumbs(tmp_path):
     ws.mkdir()
     src = ws / FIXTURE.name
     shutil.copy(FIXTURE, src)
+    (ws / "probe").mkdir()
+    (ws / "probe" / "keyframes.csv").write_text("0\n1\n2\n3\n")
     (ws / "detect").mkdir()
     (ws / "detect" / "scenes.json").write_text(json.dumps({
         "detector": "adaptive",
@@ -53,6 +55,8 @@ def test_preview_generates_html_and_thumbs(tmp_path):
     assert 'src="source-proxy.mp4"' in html
     # Original is still linked as a fallback for external players.
     assert f'href="../../../{FIXTURE.name}"' in html
+    # Snap info: scene 2 (1.5s) snaps to preceding keyframe 1.0s with 0.50s drift.
+    assert "snapped back" in html
 
 
 def test_preview_skips_proxy_when_disabled(tmp_path):
@@ -60,6 +64,8 @@ def test_preview_skips_proxy_when_disabled(tmp_path):
     ws.mkdir()
     src = ws / FIXTURE.name
     shutil.copy(FIXTURE, src)
+    (ws / "probe").mkdir()
+    (ws / "probe" / "keyframes.csv").write_text("0\n1\n2\n3\n")
     (ws / "detect").mkdir()
     (ws / "detect" / "scenes.json").write_text(json.dumps({
         "detector": "content",

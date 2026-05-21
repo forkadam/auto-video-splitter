@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 from vsplit.core.atomic import atomic_write_json
+from vsplit.core.keyframes import load_keyframes, snap_preceding
 from vsplit.core.types import Stage, StageContext, StageResult
 from vsplit.schemas.cuts import CutsJson, Scene
 
@@ -8,11 +9,6 @@ from vsplit.schemas.cuts import CutsJson, Scene
 def _parse_tc(tc: str) -> float:
     h, m, s = tc.split(":")
     return int(h) * 3600 + int(m) * 60 + float(s)
-
-
-def _snap_preceding(t: float, keyframes: list[float]) -> float:
-    candidates = [k for k in keyframes if k <= t]
-    return candidates[-1] if candidates else 0.0
 
 
 def _sanitize_label(label: str | None) -> str | None:
@@ -35,17 +31,7 @@ class PlanStage(Stage):
         cuts = CutsJson.model_validate_json(
             (ctx.workspace_dir / "decisions" / "cuts.json").read_text()
         )
-        keyframes = []
-        for line in (ctx.workspace_dir / "probe" / "keyframes.csv").read_text().splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            # csv=p=0 may include extra fields (e.g. SEI messages); take first field only
-            first_field = line.split(",")[0]
-            try:
-                keyframes.append(float(first_field))
-            except ValueError:
-                pass
+        keyframes = load_keyframes(ctx.workspace_dir / "probe" / "keyframes.csv")
         kept = [s for s in cuts.scenes if s.keep]
 
         # Merge adjacent scenes via merge_with_next
@@ -63,7 +49,7 @@ class PlanStage(Stage):
             end_req = _parse_tc(group[-1].end)
             if end_req - start_req < ctx.config.plan.min_segment_length:
                 continue
-            actual_start = _snap_preceding(start_req, keyframes)
+            actual_start = snap_preceding(start_req, keyframes)
             actual_end = end_req
             label = _sanitize_label(group[0].label)
             base = f"{ctx.manifest.id}-highlight-{out_index:02d}"

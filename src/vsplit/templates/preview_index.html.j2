@@ -34,7 +34,15 @@
 <section class="scene" id="scene-{{ '%03d' % scene.id }}">
   <div class="scene-header">
     <span class="pill">#{{ scene.id }}</span>
-    <span>{{ scene.start_tc }} → {{ scene.end_tc }} ({{ '%.2f' % scene.duration }}s)</span>
+    <span>
+      cut at <strong>{{ scene.actual_start_tc }}</strong> → {{ scene.end_tc }}
+      ({{ '%.2f' % scene.duration }}s)
+      {% if scene.drift_seconds > 0.001 %}
+        <span style="color: #888;">
+          · detected {{ scene.start_tc }} (snapped back {{ '%.2f' % scene.drift_seconds }}s to keyframe)
+        </span>
+      {% endif %}
+    </span>
   </div>
   {% for img in scene.images %}
     <img loading="lazy" src="images/{{ img }}" alt="scene {{ scene.id }} thumb">

@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from vsplit.core.atomic import atomic_write_text
+from vsplit.core.keyframes import load_keyframes, snap_preceding
 from vsplit.core.types import Stage, StageContext, StageResult
 
 _TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
@@ -33,6 +34,11 @@ class PreviewStage(Stage):
         w = ctx.config.preview.image_width
         q = ctx.config.preview.image_quality
 
+        # Keyframes drive the "where the cut will actually land" info we show
+        # alongside the detector's boundary. Probe is a hard dependency of detect,
+        # so keyframes.csv is always present by the time preview runs.
+        keyframes = load_keyframes(ctx.workspace_dir / "probe" / "keyframes.csv")
+
         scenes_for_template = []
         for scene in scenes_data["scenes"]:
             duration = scene["end_time"] - scene["start_time"]
@@ -53,10 +59,14 @@ class PreviewStage(Stage):
                     check=True,
                 )
                 img_names.append(name)
+            actual_start = snap_preceding(scene["start_time"], keyframes)
+            drift = scene["start_time"] - actual_start
             scenes_for_template.append({
                 "id": scene["id"],
                 "start_tc": _format_tc(scene["start_time"]),
                 "end_tc": _format_tc(scene["end_time"]),
+                "actual_start_tc": _format_tc(actual_start),
+                "drift_seconds": drift,
                 "duration": duration,
                 "images": img_names,
             })
