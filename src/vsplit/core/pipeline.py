@@ -4,9 +4,10 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from vsplit.core.manifest import load_manifest, save_manifest
+from vsplit.core.tool_versions import probe_versions
 from vsplit.core.types import Stage, StageContext
 from vsplit.schemas.config import Config
-from vsplit.schemas.manifest import StageError
+from vsplit.schemas.manifest import StageError, ToolVersions
 
 
 def _stage_logger(workspace_dir: Path, name: str) -> logging.Logger:
@@ -35,6 +36,13 @@ def run_stage(
 ) -> None:
     """Run one stage, persist status before and after."""
     manifest = load_manifest(workspace_dir)
+    versions = probe_versions()
+    manifest.tool_versions = ToolVersions(**versions)
+    manifest.config_snapshot = {
+        "detect": config.detect.model_dump(),
+        "split": config.split.model_dump(),
+        "review": {"default_keep": config.review.default_keep},
+    }
     block = manifest.stages[stage.name]
     block.status = "running"
     block.started_at = datetime.now(timezone.utc)
