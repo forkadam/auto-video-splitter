@@ -1,0 +1,14 @@
+from vsplit.schemas.config import Config
+
+def test_config_defaults():
+    c = Config()
+    assert c.detect.threshold == 27.0
+    assert c.review.default_keep is True
+    assert c.split.output_container == "mp4"
+    assert c.concurrency["split"] == 1
+    assert "mp4" in c.scan.extensions
+
+def test_config_partial_override():
+    c = Config.model_validate({"review": {"default_keep": False}})
+    assert c.review.default_keep is False
+    assert c.detect.threshold == 27.0   # untouched
