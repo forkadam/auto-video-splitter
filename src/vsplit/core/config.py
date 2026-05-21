@@ -1,6 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 import yaml
+import platformdirs
 from vsplit.schemas.config import Config
 
 
@@ -22,15 +23,24 @@ def _deep_merge(base: dict, overlay: dict) -> dict:
     return out
 
 
+def user_global_config_path() -> Path:
+    return Path(platformdirs.user_config_dir("vsplit")) / "config.yaml"
+
+
 def load_resolved_config(
     *, working_root: Path, explicit_path: Path | None
 ) -> Config:
-    """Resolution order: defaults -> .vsplit/config.yaml -> explicit_path."""
-    layers: list[dict] = [{}]   # defaults handled by pydantic
+    """Resolution order: defaults -> user global -> .vsplit/config.yaml -> explicit_path."""
+    layers: list[dict] = [{}]
+    global_path = user_global_config_path()
+    if global_path.exists():
+        layers.append(_read_yaml(global_path))
     candidate = working_root / ".vsplit" / "config.yaml"
     if candidate.exists():
         layers.append(_read_yaml(candidate))
-    if explicit_path is not None and explicit_path.exists():
+    if explicit_path is not None:
+        if not explicit_path.exists():
+            raise FileNotFoundError(f"--config path not found: {explicit_path}")
         layers.append(_read_yaml(explicit_path))
     merged: dict = {}
     for layer in layers:
