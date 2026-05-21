@@ -12,10 +12,10 @@ from vsplit.schemas.manifest import STAGE_NAMES
 
 console = Console()
 
-# Registry will be populated as stages are added; for now, just probe.
 def _stage_instance(name: str):
     from vsplit.stages.probe import ProbeStage
-    REGISTRY = {"probe": ProbeStage}
+    from vsplit.stages.detect import DetectStage
+    REGISTRY = {"probe": ProbeStage, "detect": DetectStage}
     if name not in REGISTRY:
         raise click.ClickException(f"stage '{name}' not implemented yet")
     return REGISTRY[name]()
