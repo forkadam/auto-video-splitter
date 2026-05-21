@@ -2,6 +2,7 @@ from pathlib import Path
 import click
 from vsplit.cli.scan import scan_cmd
 from vsplit.cli.status import status_cmd
+from vsplit.cli.run import run_cmd
 
 
 @click.group()
@@ -23,3 +24,4 @@ def main(ctx, working_dir, config_path, log_level, json_output):
 
 main.add_command(scan_cmd)
 main.add_command(status_cmd)
+main.add_command(run_cmd)
