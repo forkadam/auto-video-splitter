@@ -5,8 +5,10 @@ VSPLIT_DIR = ".vsplit"
 WORKSPACES_DIR = "workspaces"
 
 # Longest path the tool can produce inside a workspace:
-#   <root>/.vsplit/workspaces/<slug>/preview/images/scene-XXX-XX.jpg
-_DEEPEST_TAIL = "preview/images/scene-XXX-XX.jpg"
+#   <root>/.vsplit/workspaces/<slug>/output/<slug>-highlight-NN-<label>.mp4
+# We size the synthetic filename to mirror split's output pattern (spec §2.3):
+#   <slug>-highlight-NN[-label].mp4, with NN up to 99 (2 digits) and label up to 32 chars.
+_OUTPUT_LABEL_MAX = 32  # generous upper bound for human-supplied scene labels
 
 
 def working_state_dir(working_root: Path) -> Path:
@@ -22,5 +24,6 @@ def workspace_dir(working_root: Path, slug: str) -> Path:
 
 
 def project_path_length_estimate(working_root: Path, slug: str) -> int:
-    p = workspace_dir(working_root, slug) / _DEEPEST_TAIL
+    longest_filename = f"{slug}-highlight-99-{'X' * _OUTPUT_LABEL_MAX}.mp4"
+    p = workspace_dir(working_root, slug) / "output" / longest_filename
     return len(str(p))
