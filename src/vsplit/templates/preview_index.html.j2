@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ slug }} — vsplit preview</title>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; margin: 1rem; background: #111; color: #eee; }
+  h1 { font-size: 1.2rem; }
+  .meta { color: #888; font-size: 0.9rem; margin-bottom: 1rem; }
+  .scene { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px;
+           border: 1px solid #333; padding: 8px; margin-bottom: 12px; }
+  .scene-header { grid-column: 1 / -1; display: flex; justify-content: space-between;
+                  font-size: 0.85rem; }
+  .scene img { width: 100%; height: auto; display: block; }
+  video { max-width: 100%; margin-top: 1rem; }
+  .pill { padding: 2px 8px; border-radius: 6px; background: #333; }
+</style>
+</head>
+<body>
+<h1>{{ slug }}</h1>
+<div class="meta">
+  {{ scenes|length }} scenes · source: {{ source_rel }}
+</div>
+<video controls preload="metadata" src="../{{ source_rel | e }}"></video>
+{% for scene in scenes %}
+<section class="scene" id="scene-{{ '%03d' % scene.id }}">
+  <div class="scene-header">
+    <span class="pill">#{{ scene.id }}</span>
+    <span>{{ scene.start_tc }} → {{ scene.end_tc }} ({{ '%.2f' % scene.duration }}s)</span>
+  </div>
+  {% for img in scene.images %}
+    <img loading="lazy" src="images/{{ img }}" alt="scene {{ scene.id }} thumb">
+  {% endfor %}
+</section>
+{% endfor %}
+</body>
+</html>

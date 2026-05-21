@@ -15,7 +15,8 @@ console = Console()
 def _stage_instance(name: str):
     from vsplit.stages.probe import ProbeStage
     from vsplit.stages.detect import DetectStage
-    REGISTRY = {"probe": ProbeStage, "detect": DetectStage}
+    from vsplit.stages.preview import PreviewStage
+    REGISTRY = {"probe": ProbeStage, "detect": DetectStage, "preview": PreviewStage}
     if name not in REGISTRY:
         raise click.ClickException(f"stage '{name}' not implemented yet")
     return REGISTRY[name]()
