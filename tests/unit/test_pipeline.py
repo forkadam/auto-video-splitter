@@ -40,3 +40,33 @@ def test_run_stage_persists_status_and_artifacts(tmp_path):
     assert loaded.stages["probe"].status == "done"
     assert loaded.stages["probe"].artifacts.get("keyframe_count") is not None
     assert loaded.metadata.duration_seconds is not None
+
+
+def test_run_stage_does_not_leak_log_handles(tmp_path):
+    """Repeated stage runs must close prior FileHandlers so the .log file can be re-created."""
+    import logging
+    from vsplit.core.pipeline import _stage_logger
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    # First call: capture the handler that gets opened.
+    logger1 = _stage_logger(ws, "probe")
+    logger1.info("first")
+    first_handler = logger1.handlers[0]
+    assert isinstance(first_handler, logging.FileHandler)
+    # Second call: _stage_logger must close the prior handler before removing it.
+    logger2 = _stage_logger(ws, "probe")  # should close first_handler
+    logger2.info("second")
+    # The prior handler must be closed — its stream should be None or closed.
+    assert first_handler.stream is None or first_handler.stream.closed, (
+        "prior FileHandler was not closed — file handle leaked"
+    )
+    # Exactly one handler remains (the new one).
+    assert len(logger2.handlers) == 1
+    log_path = ws / "logs" / "probe.log"
+    assert log_path.exists()
+    # Cleanup remaining handler then delete the file — should succeed on Windows.
+    for h in list(logger2.handlers):
+        h.close()
+        logger2.removeHandler(h)
+    log_path.unlink()  # raises PermissionError on Windows if any handle is still open
+    assert not log_path.exists()

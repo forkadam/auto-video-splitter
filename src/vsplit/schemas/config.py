@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class DetectConfig(BaseModel):
@@ -47,6 +47,10 @@ class ScanConfig(BaseModel):
     recursive: bool = False
 
 
+_VALID_CONCURRENCY_STAGES = frozenset({"probe", "detect", "preview", "plan", "split", "verify"})
+# Note: "review" is excluded — review runs synchronously, no concurrency.
+
+
 class Config(BaseModel):
     model_config = ConfigDict(extra="forbid")
     detect: DetectConfig = Field(default_factory=DetectConfig)
@@ -62,3 +66,13 @@ class Config(BaseModel):
         }
     )
     scan: ScanConfig = Field(default_factory=ScanConfig)
+
+    @field_validator("concurrency")
+    @classmethod
+    def _validate_concurrency(cls, v: dict[str, int]) -> dict[str, int]:
+        unknown = set(v) - _VALID_CONCURRENCY_STAGES
+        if unknown:
+            raise ValueError(f"unknown stage(s) in concurrency: {sorted(unknown)}")
+        if any(n < 1 for n in v.values()):
+            raise ValueError("concurrency values must be >= 1")
+        return v

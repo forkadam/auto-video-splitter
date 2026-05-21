@@ -17,6 +17,7 @@ def _stage_logger(workspace_dir: Path, name: str) -> logging.Logger:
     logger.setLevel(logging.DEBUG)
     # Drop any prior handlers (test isolation)
     for h in list(logger.handlers):
+        h.close()
         logger.removeHandler(h)
     handler = logging.FileHandler(logs / f"{name}.log", encoding="utf-8")
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))

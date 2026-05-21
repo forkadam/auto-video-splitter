@@ -56,3 +56,4 @@ class VerifyStage(Stage):
         block.error = None
         block.started_at = None
         block.completed_at = None
+        block.set_at = None

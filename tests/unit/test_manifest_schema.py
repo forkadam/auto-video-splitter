@@ -27,6 +27,37 @@ def test_manifest_minimal_round_trip():
     assert m.id == "birthday"
     assert m.stages["probe"].status == "pending"
 
+def test_manifest_rejects_missing_stage_key():
+    from datetime import datetime, timezone
+    bad = {
+        "schema_version": 1,
+        "id": "x",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "source": {"relative_path": "x", "size_bytes": 1, "mtime": datetime.now(timezone.utc).isoformat(), "partial_hash": "x"},
+        "stages": {n: {"status": "pending", "artifacts": {}} for n in ["probe", "detect"]},  # missing the other 5
+    }
+    with pytest.raises(ValidationError):
+        Manifest.model_validate(bad)
+
+
+def test_manifest_rejects_unknown_stage_key():
+    from datetime import datetime, timezone
+    full_stages = {n: {"status": "pending", "artifacts": {}}
+                   for n in ["probe", "detect", "preview", "review", "plan", "split", "verify"]}
+    full_stages["bogus_extra"] = {"status": "pending", "artifacts": {}}
+    bad = {
+        "schema_version": 1,
+        "id": "x",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "source": {"relative_path": "x", "size_bytes": 1, "mtime": datetime.now(timezone.utc).isoformat(), "partial_hash": "x"},
+        "stages": full_stages,
+    }
+    with pytest.raises(ValidationError):
+        Manifest.model_validate(bad)
+
+
 def test_manifest_rejects_unknown_stage_status():
     data = {
         "schema_version": 1,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 StageStatus = Literal["pending", "running", "done", "failed", "awaiting_user", "skipped"]
 STAGE_NAMES = ("probe", "detect", "preview", "review", "plan", "split", "verify")
@@ -63,3 +63,15 @@ class Manifest(BaseModel):
     tool_versions: ToolVersions = Field(default_factory=ToolVersions)
     stages: dict[str, StageBlock]
     config_snapshot: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _validate_stage_keys(self) -> "Manifest":
+        expected = set(STAGE_NAMES)
+        actual = set(self.stages.keys())
+        missing = expected - actual
+        extra = actual - expected
+        if missing:
+            raise ValueError(f"manifest missing stage keys: {sorted(missing)}")
+        if extra:
+            raise ValueError(f"manifest has unknown stage keys: {sorted(extra)}")
+        return self
