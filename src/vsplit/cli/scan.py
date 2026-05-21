@@ -10,7 +10,7 @@ from vsplit.core.index import load_index, save_index
 from vsplit.core.manifest import (
     load_manifest, save_manifest, new_manifest, manifest_path
 )
-from vsplit.core.paths import workspace_dir, working_state_dir
+from vsplit.core.paths import workspace_dir, working_state_dir, project_path_length_estimate
 from vsplit.core.slugify import slugify, resolve_collision
 from vsplit.schemas.index import WorkspaceEntry
 from vsplit.schemas.manifest import SourceInfo
@@ -89,6 +89,11 @@ def scan_cmd(ctx, path, recursive, dry_run, auto_relocate):
             continue
         new_slug = resolve_collision(base, live_slugs, retired_slugs)
         live_slugs.add(new_slug)
+        if project_path_length_estimate(working_root, new_slug) > 240:
+            console.print(
+                f"[yellow]warning[/]: path length warning — projected path for {new_slug} "
+                f"exceeds 240 chars; consider a shorter working folder or filename"
+            )
         if dry_run:
             console.print(f"[blue]would adopt[/]: {rel} -> {new_slug}")
             continue

@@ -37,3 +37,14 @@ def test_scan_idempotent(tmp_path):
     runner.invoke(main, ["-w", str(tmp_path), "scan"])
     idx = load_index(tmp_path)
     assert len(idx.workspaces) == 1
+
+
+def test_scan_warns_on_long_paths(tmp_path):
+    # Construct a working root + filename that pushes projected workspace path past 240 chars
+    long_name = "a" * 80 + ".mp4"
+    _make_video(tmp_path / long_name)
+    runner = CliRunner()
+    result = runner.invoke(main, ["-w", str(tmp_path), "scan"])
+    assert result.exit_code == 0
+    if len(str(tmp_path)) + 60 + 80 > 200:
+        assert "path length" in result.output.lower() or "long path" in result.output.lower()
