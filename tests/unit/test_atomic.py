@@ -1,5 +1,6 @@
+import json
 from pathlib import Path
-import pytest
+
 from vsplit.core.atomic import atomic_write_text, atomic_write_json
 
 def test_atomic_write_text(tmp_path: Path):
@@ -16,7 +17,6 @@ def test_atomic_write_overwrites(tmp_path: Path):
 def test_atomic_write_json(tmp_path: Path):
     p = tmp_path / "out.json"
     atomic_write_json(p, {"a": 1, "b": [2, 3]})
-    import json
     assert json.loads(p.read_text()) == {"a": 1, "b": [2, 3]}
 
 def test_atomic_write_creates_parent(tmp_path: Path):
