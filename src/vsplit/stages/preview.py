@@ -50,10 +50,13 @@ class PreviewStage(Stage):
             img_names = []
             for k, t in enumerate(sample_ts, start=1):
                 name = f"scene-{scene['id']:03d}-{k:02d}.jpg"
+                # `format=yuvj420p` downsamples 10-bit HEVC (iPhone default)
+                # to JPEG's expected 8-bit full-range YUV. Without it MJPEG
+                # encoder fails with "ff_frame_thread_encoder_init failed".
                 subprocess.run(
                     ["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{t:.3f}",
                      "-i", str(ctx.source_path), "-frames:v", "1",
-                     "-vf", f"scale={w}:-1",
+                     "-vf", f"scale={w}:-1,format=yuvj420p",
                      "-q:v", str(max(2, min(31, 31 - int(q / 100 * 29)))),
                      str(imgs / name)],
                     check=True,
@@ -78,10 +81,12 @@ class PreviewStage(Stage):
         has_proxy = False
         if proxy_height and proxy_height > 0:
             proxy_path = outdir / proxy_name
+            # `format=yuv420p` downconverts 10-bit HEVC to 8-bit so libx264
+            # (default 8-bit build) accepts the input.
             subprocess.run(
                 ["ffmpeg", "-y", "-loglevel", "error",
                  "-i", str(ctx.source_path),
-                 "-vf", f"scale=-2:{proxy_height}",
+                 "-vf", f"scale=-2:{proxy_height},format=yuv420p",
                  "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
                  "-c:a", "aac", "-b:a", "96k",
                  "-movflags", "+faststart",
