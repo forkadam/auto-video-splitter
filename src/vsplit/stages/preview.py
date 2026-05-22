@@ -43,10 +43,13 @@ class PreviewStage(Stage):
         for scene in scenes_data["scenes"]:
             duration = scene["end_time"] - scene["start_time"]
             _safe_end = scene["end_time"] - min(0.1, duration * 0.05)
+            # Very short scenes (< ~1s) don't have room for N evenly-spaced
+            # frames; collapse to a single midpoint thumb instead.
+            n_eff = 1 if duration < 1.0 else n
             sample_ts = [
-                min(scene["start_time"] + duration * (i / max(n - 1, 1)), _safe_end)
-                for i in range(n)
-            ] if n > 1 else [scene["start_time"] + duration / 2]
+                min(scene["start_time"] + duration * (i / max(n_eff - 1, 1)), _safe_end)
+                for i in range(n_eff)
+            ] if n_eff > 1 else [scene["start_time"] + duration / 2]
             img_names = []
             for k, t in enumerate(sample_ts, start=1):
                 name = f"scene-{scene['id']:03d}-{k:02d}.jpg"
@@ -61,7 +64,12 @@ class PreviewStage(Stage):
                      str(imgs / name)],
                     check=True,
                 )
-                img_names.append(name)
+                # ffmpeg can exit 0 yet produce no file when the seek lands
+                # past the last decodable frame near EOF. Only list thumbs
+                # that actually made it to disk so the HTML <img>s aren't broken.
+                out_path = imgs / name
+                if out_path.exists() and out_path.stat().st_size > 0:
+                    img_names.append(name)
             actual_start = snap_preceding(scene["start_time"], keyframes)
             drift = scene["start_time"] - actual_start
             scenes_for_template.append({

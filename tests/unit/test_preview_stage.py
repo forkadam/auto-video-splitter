@@ -92,3 +92,49 @@ def test_preview_skips_proxy_when_disabled(tmp_path):
     html = (ws / "preview" / "index.html").read_text(encoding="utf-8")
     # Falls back to the relative source path
     assert f'src="../../../{FIXTURE.name}"' in html
+
+
+def test_preview_short_scene_uses_single_thumb(tmp_path):
+    """Sub-second scenes can't host 3 evenly-spaced thumbs; collapse to 1."""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    src = ws / FIXTURE.name
+    shutil.copy(FIXTURE, src)
+    (ws / "probe").mkdir()
+    (ws / "probe" / "keyframes.csv").write_text("0\n1\n2\n")
+    (ws / "detect").mkdir()
+    (ws / "detect" / "scenes.json").write_text(json.dumps({
+        "detector": "content",
+        "config": {"threshold": 27.0},
+        "scenes": [
+            {"id": 1, "start_time": 0.0, "end_time": 2.0,
+             "start_frame": 0, "end_frame": 48},
+            # Scene 2 is 0.3s — too short for 3 thumbs.
+            {"id": 2, "start_time": 2.0, "end_time": 2.3,
+             "start_frame": 48, "end_frame": 55},
+        ],
+    }))
+    m = new_manifest(
+        slug="ws",
+        source=SourceInfo(relative_path=FIXTURE.name, size_bytes=src.stat().st_size,
+                          mtime=datetime.now(timezone.utc), partial_hash="x"),
+    )
+    save_manifest(ws, m)
+    cfg = Config()
+    cfg.preview.proxy_height = None  # skip transcode to keep test fast
+    ctx = StageContext(
+        workspace_dir=ws, working_root=tmp_path, source_path=src,
+        manifest=m, config=cfg, logger=logging.getLogger("test"),
+        cancel_event=threading.Event(),
+    )
+    PreviewStage().run(ctx)
+    # Scene 1: full 3 thumbs. Scene 2: only 1 (midpoint).
+    scene1_thumbs = list((ws / "preview" / "images").glob("scene-001-*.jpg"))
+    scene2_thumbs = list((ws / "preview" / "images").glob("scene-002-*.jpg"))
+    assert len(scene1_thumbs) == 3
+    assert len(scene2_thumbs) == 1
+    # HTML must not reference scene-002-02 or scene-002-03 (those weren't generated).
+    html = (ws / "preview" / "index.html").read_text(encoding="utf-8")
+    assert "scene-002-01.jpg" in html
+    assert "scene-002-02.jpg" not in html
+    assert "scene-002-03.jpg" not in html
