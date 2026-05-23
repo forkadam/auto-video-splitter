@@ -104,6 +104,31 @@ def test_workspace_no_thumbs_when_preview_dir_missing(tmp_path: Path) -> None:
     assert client.get("/api/workspaces/alpha").json()["thumb_names"] == []
 
 
+def test_open_preview_invokes_webbrowser(tmp_path: Path, monkeypatch) -> None:
+    _seed(tmp_path, "alpha")
+    preview = workspace_dir(tmp_path, "alpha") / "preview"
+    preview.mkdir(parents=True)
+    (preview / "index.html").write_text("<html></html>")
+    opened: list[str] = []
+    import webbrowser as _wb
+    monkeypatch.setattr(_wb, "open", lambda url: opened.append(url) or True)
+    # Server captures `webbrowser` at import time; patch the one in the API module too.
+    from vsplit.dashboard.api import workspaces as workspaces_mod
+    monkeypatch.setattr(workspaces_mod.webbrowser, "open",
+                        lambda url: opened.append(url) or True)
+    r = TestClient(create_app(tmp_path)).post("/api/workspaces/alpha/open-preview")
+    assert r.status_code == 200
+    assert r.json()["opened"] is True
+    assert len(opened) == 1
+    assert "preview/index.html" in opened[0].replace("\\", "/")
+
+
+def test_open_preview_404_when_missing(tmp_path: Path) -> None:
+    _seed(tmp_path, "alpha")
+    r = TestClient(create_app(tmp_path)).post("/api/workspaces/alpha/open-preview")
+    assert r.status_code == 404
+
+
 def test_workspace_detail_rejects_path_traversal(tmp_path: Path) -> None:
     _seed(tmp_path, "alpha")
     client = TestClient(create_app(tmp_path))

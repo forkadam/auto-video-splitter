@@ -31,6 +31,7 @@ type Props = {
 type Detail = {
   workspace_path?: string
   thumb_names?: string[]
+  stages?: Record<string, string>
   manifest?: {
     stages?: Record<string, { artifacts?: Record<string, unknown> }>
   }
@@ -47,10 +48,7 @@ export function WorkspaceRow({
   }, [expanded, ws.slug])
 
   const thumbNames = detail?.thumb_names ?? []
-
-  const previewHref = detail?.workspace_path
-    ? `file:///${detail.workspace_path.replace(/\\/g, "/")}/preview/index.html`
-    : "#"
+  const previewReady = ws.stages.preview === "done"
 
   return (
     <div className={cn(
@@ -155,10 +153,14 @@ export function WorkspaceRow({
             }}>
               Clean
             </Button>
-            <Button size="sm" variant="ghost" asChild>
-              <a href={previewHref} target="_blank" rel="noreferrer">
-                Open preview ↗
-              </a>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={!previewReady}
+              onClick={() => api.workspaces.openPreview(ws.slug)
+                .catch((e) => alert(`Failed to open preview: ${e.message ?? e}`))}
+            >
+              Open preview ↗
             </Button>
           </div>
         </div>

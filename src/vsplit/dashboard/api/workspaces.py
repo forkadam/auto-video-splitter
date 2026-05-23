@@ -1,4 +1,5 @@
 from __future__ import annotations
+import webbrowser
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
@@ -68,6 +69,22 @@ def get_workspace(slug: str, request: Request) -> dict:
         "thumb_names": _list_thumbs(root, slug),
         "manifest": m.model_dump(mode="json"),
     }
+
+
+@router.post("/{slug}/open-preview")
+def open_preview(slug: str, request: Request) -> dict:
+    """Open this workspace's preview HTML in the OS default browser.
+
+    Browsers block click-navigation from http:// to file:// for security, so
+    we hand the file URI to the OS shell handler from the server side.
+    """
+    root: Path = request.app.state.working_root
+    _require_slug(root, slug)
+    p = workspace_dir(root, slug) / "preview" / "index.html"
+    if not p.is_file():
+        raise HTTPException(status_code=404, detail="preview not generated yet")
+    webbrowser.open(p.as_uri())
+    return {"opened": True, "path": str(p)}
 
 
 @router.get("/{slug}/thumbs/{name}")

@@ -43,6 +43,8 @@ export const api = {
       jsonRequest<{ cleaned: number }>("POST", `/api/workspaces/${slug}/clean`),
     approve: (slug: string) =>
       jsonRequest<{ approved: number }>("POST", `/api/workspaces/${slug}/approve`),
+    openPreview: (slug: string) =>
+      jsonRequest<{ opened: boolean; path: string }>("POST", `/api/workspaces/${slug}/open-preview`),
     thumbUrl: (slug: string, name: string) => `/api/workspaces/${slug}/thumbs/${name}`,
   },
   batch: {
