@@ -28,6 +28,9 @@ def create_app(
     from vsplit.dashboard.api import workspaces as workspaces_api
     app.include_router(workspaces_api.router)
 
+    from vsplit.dashboard.api import logs as logs_api
+    app.include_router(logs_api.router)
+
     @app.on_event("startup")
     def _startup() -> None:
         watcher.start()
