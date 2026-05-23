@@ -36,6 +36,7 @@ def create_app(
 
     from vsplit.dashboard.api import actions as actions_api
     app.include_router(actions_api.router)
+    app.include_router(actions_api.batch_router)
 
     @app.on_event("startup")
     def _startup() -> None:

@@ -81,3 +81,27 @@ def test_run_endpoint_advances_probe(tmp_path: Path) -> None:
     assert r.status_code == 200
     m = load_manifest(workspace_dir(tmp_path, "short"))
     assert m.stages["probe"].status == "done"
+
+
+def test_batch_clean(tmp_path: Path) -> None:
+    _seed(tmp_path, "a")
+    _seed(tmp_path, "b")
+    _seed(tmp_path, "c")
+    r = TestClient(create_app(tmp_path)).post(
+        "/api/batch/clean", json={"slugs": ["a", "c"]}
+    )
+    assert r.status_code == 200
+    assert r.json() == {"cleaned": 2}
+    idx = load_index(tmp_path)
+    assert "b" in idx.workspaces
+    assert "a" not in idx.workspaces
+    assert "c" not in idx.workspaces
+
+
+def test_batch_approve(tmp_path: Path) -> None:
+    _seed(tmp_path, "a", awaiting=True)
+    _seed(tmp_path, "b", awaiting=False)
+    r = TestClient(create_app(tmp_path)).post(
+        "/api/batch/approve", json={"slugs": ["a", "b"]}
+    )
+    assert r.json() == {"approved": 1}
