@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from fastapi.testclient import TestClient
 
-from vsplit.core.index import save_index
+from vsplit.core.index import save_index, load_index
 from vsplit.core.manifest import new_manifest, save_manifest
 from vsplit.core.paths import workspace_dir
 from vsplit.dashboard.server import create_app
@@ -17,10 +17,13 @@ def _seed(tmp_path: Path, slug: str) -> None:
         relative_path=f"{slug}.mp4", size_bytes=1,
         mtime=datetime.now(timezone.utc), partial_hash="x"))
     save_manifest(ws, m)
-    save_index(tmp_path, Index(workspaces={slug: WorkspaceEntry(
+    # Accumulate into the existing index rather than overwriting.
+    idx = load_index(tmp_path)
+    idx.workspaces[slug] = WorkspaceEntry(
         source_relative_path=f"{slug}.mp4", size_bytes=1,
         partial_hash="x", adopted_at=datetime.now(timezone.utc),
-    )}))
+    )
+    save_index(tmp_path, idx)
 
 
 def test_list_workspaces(tmp_path: Path) -> None:

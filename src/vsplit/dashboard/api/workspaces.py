@@ -2,8 +2,9 @@ from __future__ import annotations
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 
+from vsplit.core.index import load_index
 from vsplit.core.manifest import load_manifest
-from vsplit.core.paths import workspace_dir, workspaces_root
+from vsplit.core.paths import workspace_dir
 
 router = APIRouter(prefix="/api/workspaces", tags=["workspaces"])
 
@@ -23,18 +24,14 @@ def _summary(slug: str, m) -> dict:
 @router.get("")
 def list_workspaces(request: Request) -> dict:
     root: Path = request.app.state.working_root
-    ws_root = workspaces_root(root)
+    idx = load_index(root)
     items = []
-    if ws_root.is_dir():
-        for entry in sorted(ws_root.iterdir()):
-            if not entry.is_dir():
-                continue
-            slug = entry.name
-            try:
-                m = load_manifest(entry)
-            except FileNotFoundError:
-                continue
-            items.append(_summary(slug, m))
+    for slug in idx.workspaces:
+        try:
+            m = load_manifest(workspace_dir(root, slug))
+        except FileNotFoundError:
+            continue
+        items.append(_summary(slug, m))
     return {"workspaces": items}
 
 
