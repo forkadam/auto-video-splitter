@@ -1,10 +1,10 @@
 from __future__ import annotations
-import shutil
 from pathlib import Path
 import click
 from rich.console import Console
 from vsplit.cli._filter import parse_filter, apply_filters, Predicate
-from vsplit.core.index import load_index, save_index
+from vsplit.core.actions import clean_workspaces
+from vsplit.core.index import load_index
 from vsplit.core.manifest import load_manifest
 from vsplit.core.paths import workspace_dir
 
@@ -43,11 +43,7 @@ def clean_cmd(ctx, slug_glob, clean_all, filters, force):
         f"delete {len(targets)} workspace(s)?", default=False
     ):
         return
+    removed = clean_workspaces(working_root, targets)
     for slug in targets:
-        ws = workspace_dir(working_root, slug)
-        shutil.rmtree(ws, ignore_errors=True)
-        idx.workspaces.pop(slug, None)
-        if slug not in idx.retired_slugs:
-            idx.retired_slugs.append(slug)
         console.print(f"[green]cleaned[/]: {slug}")
-    save_index(working_root, idx)
+    console.print(f"\n{removed} cleaned")
