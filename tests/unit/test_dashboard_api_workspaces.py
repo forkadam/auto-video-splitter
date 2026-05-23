@@ -49,3 +49,28 @@ def test_workspace_detail_404(tmp_path: Path) -> None:
     client = TestClient(create_app(tmp_path))
     r = client.get("/api/workspaces/missing")
     assert r.status_code == 404
+
+
+def test_thumb_serving(tmp_path: Path) -> None:
+    _seed(tmp_path, "alpha")
+    img_dir = workspace_dir(tmp_path, "alpha") / "preview" / "images"
+    img_dir.mkdir(parents=True)
+    (img_dir / "scene-001-01.jpg").write_bytes(b"\xff\xd8\xff\xe0fake")
+    client = TestClient(create_app(tmp_path))
+    r = client.get("/api/workspaces/alpha/thumbs/scene-001-01.jpg")
+    assert r.status_code == 200
+    assert r.content == b"\xff\xd8\xff\xe0fake"
+
+
+def test_thumb_404(tmp_path: Path) -> None:
+    _seed(tmp_path, "alpha")
+    client = TestClient(create_app(tmp_path))
+    r = client.get("/api/workspaces/alpha/thumbs/missing.jpg")
+    assert r.status_code == 404
+
+
+def test_thumb_traversal_rejected(tmp_path: Path) -> None:
+    _seed(tmp_path, "alpha")
+    client = TestClient(create_app(tmp_path))
+    r = client.get("/api/workspaces/alpha/thumbs/../../escape.jpg")
+    assert r.status_code in (400, 404)

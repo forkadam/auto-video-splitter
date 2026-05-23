@@ -1,6 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import FileResponse
 
 from vsplit.core.index import load_index
 from vsplit.core.manifest import load_manifest
@@ -46,3 +47,15 @@ def get_workspace(slug: str, request: Request) -> dict:
         **_summary(slug, m),
         "manifest": m.model_dump(mode="json"),
     }
+
+
+@router.get("/{slug}/thumbs/{name}")
+def get_thumb(slug: str, name: str, request: Request):
+    root: Path = request.app.state.working_root
+    # Reject anything that would escape the thumbs dir.
+    if "/" in name or "\\" in name or ".." in name:
+        raise HTTPException(status_code=400, detail="invalid name")
+    img = workspace_dir(root, slug) / "preview" / "images" / name
+    if not img.is_file():
+        raise HTTPException(status_code=404, detail="thumb not found")
+    return FileResponse(img, media_type="image/jpeg")
