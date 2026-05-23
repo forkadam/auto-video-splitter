@@ -7,6 +7,7 @@ from vsplit.cli.approve import approve_cmd
 from vsplit.cli.reset import reset_cmd
 from vsplit.cli.clean import clean_cmd
 from vsplit.cli.one import one_cmd
+from vsplit.cli.dashboard import dashboard_cmd
 
 
 @click.group()
@@ -33,3 +34,4 @@ main.add_command(approve_cmd)
 main.add_command(reset_cmd)
 main.add_command(clean_cmd)
 main.add_command(one_cmd)
+main.add_command(dashboard_cmd)
