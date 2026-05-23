@@ -7,7 +7,6 @@ This catches edits made by:
 - the dashboard's own action handlers (redundant but harmless)
 """
 from __future__ import annotations
-import asyncio
 import threading
 import time
 from pathlib import Path
@@ -25,19 +24,16 @@ class ManifestWatcher:
         broker: EventBroker,
         *,
         poll_interval: float = 0.5,
-        loop: asyncio.AbstractEventLoop | None = None,
     ) -> None:
         self._root = working_root
         self._broker = broker
         self._interval = poll_interval
-        self._loop = loop
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._mtimes: dict[str, float] = {}
         self._known: set[str] = set()
 
     def start(self) -> None:
-        self._loop = self._loop or asyncio.get_event_loop()
         self._thread = threading.Thread(target=self._loop_run, daemon=True)
         self._thread.start()
 

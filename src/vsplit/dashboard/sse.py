@@ -54,7 +54,6 @@ class _QueueSubscriber:
 class EventBroker:
     def __init__(self) -> None:
         self._subscribers: list[asyncio.Queue] = []
-        self._lock = asyncio.Lock()
 
     def publish(self, event: dict) -> None:
         """Non-blocking fan-out. Drops events for slow consumers."""

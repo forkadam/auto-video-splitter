@@ -10,6 +10,13 @@ from vsplit.core.paths import workspace_dir
 router = APIRouter(prefix="/api/workspaces", tags=["workspaces"])
 
 
+def _require_slug(working_root: Path, slug: str) -> None:
+    """Reject unknown slugs with 404, also rejects path-traversal attempts."""
+    idx = load_index(working_root)
+    if slug not in idx.workspaces:
+        raise HTTPException(status_code=404, detail=f"workspace not found: {slug}")
+
+
 def _summary(slug: str, m) -> dict:
     statuses = [b.status for b in m.stages.values()]
     return {
@@ -39,6 +46,7 @@ def list_workspaces(request: Request) -> dict:
 @router.get("/{slug}")
 def get_workspace(slug: str, request: Request) -> dict:
     root: Path = request.app.state.working_root
+    _require_slug(root, slug)
     try:
         m = load_manifest(workspace_dir(root, slug))
     except FileNotFoundError:
@@ -56,6 +64,7 @@ def get_thumb(slug: str, name: str, request: Request):
     # Reject anything that would escape the thumbs dir.
     if "/" in name or "\\" in name or ".." in name:
         raise HTTPException(status_code=400, detail="invalid name")
+    _require_slug(root, slug)
     img = workspace_dir(root, slug) / "preview" / "images" / name
     if not img.is_file():
         raise HTTPException(status_code=404, detail="thumb not found")

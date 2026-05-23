@@ -164,4 +164,10 @@ def run_workspaces(
 
     if broker:
         for ws in workspaces:
-            broker.publish({"type": "run_finished", "slug": ws.slug, "ok": True})
+            # Reload manifest to determine actual outcome (any stage failed → ok=False)
+            try:
+                m = load_manifest(ws.workspace_dir)
+                ok = not any(b.status == "failed" for b in m.stages.values())
+            except Exception:
+                ok = False
+            broker.publish({"type": "run_finished", "slug": ws.slug, "ok": ok})

@@ -36,3 +36,9 @@ def test_log_endpoint_404_for_missing(tmp_path: Path) -> None:
     _seed_with_log(tmp_path, "alpha", "probe", "x")
     r = TestClient(create_app(tmp_path)).get("/api/workspaces/alpha/logs/detect")
     assert r.status_code == 404
+
+
+def test_log_endpoint_rejects_unknown_slug(tmp_path: Path) -> None:
+    _seed_with_log(tmp_path, "alpha", "probe", "x")
+    r = TestClient(create_app(tmp_path)).get("/api/workspaces/bogus/logs/probe")
+    assert r.status_code == 404

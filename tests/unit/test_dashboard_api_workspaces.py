@@ -74,3 +74,11 @@ def test_thumb_traversal_rejected(tmp_path: Path) -> None:
     client = TestClient(create_app(tmp_path))
     r = client.get("/api/workspaces/alpha/thumbs/../../escape.jpg")
     assert r.status_code in (400, 404)
+
+
+def test_workspace_detail_rejects_path_traversal(tmp_path: Path) -> None:
+    _seed(tmp_path, "alpha")
+    client = TestClient(create_app(tmp_path))
+    # Try to escape via slug
+    r = client.get("/api/workspaces/..%2F..%2Fescape")
+    assert r.status_code in (404, 400)
