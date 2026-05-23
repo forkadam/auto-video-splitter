@@ -1,11 +1,11 @@
 from __future__ import annotations
-from datetime import datetime, timezone
 from pathlib import Path
 import click
 import fnmatch
 from rich.console import Console
+from vsplit.core.actions import approve_workspaces
 from vsplit.core.index import load_index
-from vsplit.core.manifest import load_manifest, save_manifest
+from vsplit.core.manifest import load_manifest
 from vsplit.core.paths import workspace_dir
 
 console = Console()
@@ -34,16 +34,9 @@ def approve_cmd(ctx, slug_glob, filters):
         elif k == "slug":
             targets = [s for s in targets if fnmatch.fnmatch(s, v)]
 
-    now = datetime.now(timezone.utc).isoformat()
-    count = 0
+    approved = approve_workspaces(working_root, targets)
     for slug in targets:
-        ws = workspace_dir(working_root, slug)
-        m = load_manifest(ws)
-        block = m.stages["review"]
-        if block.status != "awaiting_user":
-            continue
-        block.artifacts["approved_at"] = now
-        save_manifest(ws, m)
-        console.print(f"[green]approved[/]: {slug}")
-        count += 1
-    console.print(f"\n{count} approved")
+        m = load_manifest(workspace_dir(working_root, slug))
+        if m.stages["review"].artifacts.get("approved_at"):
+            console.print(f"[green]approved[/]: {slug}")
+    console.print(f"\n{approved} approved")
