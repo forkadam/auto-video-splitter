@@ -70,6 +70,11 @@ def create_app(
     async def events():
         return StreamingResponse(_event_stream(), media_type="text/event-stream")
 
+    from fastapi.staticfiles import StaticFiles
+    dist = Path(__file__).parent / "dist"
+    if dist.is_dir():
+        app.mount("/", StaticFiles(directory=str(dist), html=True), name="spa")
+
     return app
 
 
