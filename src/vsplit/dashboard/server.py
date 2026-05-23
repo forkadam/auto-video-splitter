@@ -1,32 +1,66 @@
 """FastAPI app factory + uvicorn launcher for the vsplit dashboard."""
 from __future__ import annotations
+import asyncio
+import json
 import webbrowser
 from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
+
+from vsplit.dashboard.sse import EventBroker
+from vsplit.dashboard.watcher import ManifestWatcher
 
 
-def create_app(working_root: Path) -> FastAPI:
-    """Build a FastAPI app pointed at the given working root."""
+def create_app(
+    working_root: Path,
+    *,
+    heartbeat_interval: float = 15.0,
+) -> FastAPI:
     app = FastAPI(title="vsplit dashboard", version="0.1.0")
     app.state.working_root = working_root
+    broker = EventBroker()
+    app.state.broker = broker
+    watcher = ManifestWatcher(working_root, broker)
+    app.state.watcher = watcher
+
+    @app.on_event("startup")
+    def _startup() -> None:
+        watcher.start()
+
+    @app.on_event("shutdown")
+    def _shutdown() -> None:
+        watcher.stop()
 
     @app.get("/api/health")
     def health() -> dict:
         return {"ok": True}
 
+    async def _event_stream():
+        subscriber = broker.subscribe()
+        last = asyncio.get_event_loop().time()
+        try:
+            while True:
+                try:
+                    ev = await asyncio.wait_for(
+                        anext(subscriber),
+                        timeout=heartbeat_interval,
+                    )
+                    yield f"data: {json.dumps(ev)}\n\n"
+                except asyncio.TimeoutError:
+                    yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
+        finally:
+            await subscriber.aclose()
+
+    @app.get("/api/events")
+    async def events():
+        return StreamingResponse(_event_stream(), media_type="text/event-stream")
+
     return app
 
 
-def run_server(
-    working_root: Path,
-    *,
-    host: str = "127.0.0.1",
-    port: int = 8765,
-    open_browser: bool = True,
-) -> None:
-    """Block on uvicorn until shutdown."""
+def run_server(working_root: Path, *, host="127.0.0.1", port=8765, open_browser=True) -> None:
     app = create_app(working_root)
     url = f"http://{host}:{port}"
     if open_browser:

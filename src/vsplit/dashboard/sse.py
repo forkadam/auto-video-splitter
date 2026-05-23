@@ -8,6 +8,49 @@ import asyncio
 from typing import AsyncIterator
 
 
+class _QueueSubscriber:
+    """Async iterator backed by a Queue.
+
+    Using a class-based iterator (rather than an async generator) means
+    each call to __anext__ creates a fresh coroutine.  asyncio.wait_for
+    cancels only that coroutine on timeout — it does not close the
+    iterator, so subsequent calls work correctly.  An async generator
+    would be permanently closed by the first cancellation (Python 3.13).
+
+    The queue is registered with the broker lazily on the first
+    __anext__ call (not at construction time) so that events emitted
+    between subscribe() and the first actual iteration are not
+    buffered.  This preserves the behaviour of the previous
+    async-generator implementation where the queue was appended when
+    the generator body first executed.
+    """
+
+    def __init__(self, broker_list: list[asyncio.Queue]) -> None:
+        self._broker_list = broker_list
+        self._q: asyncio.Queue | None = None
+
+    def _ensure_registered(self) -> asyncio.Queue:
+        if self._q is None:
+            self._q = asyncio.Queue(maxsize=256)
+            self._broker_list.append(self._q)
+        return self._q
+
+    def __aiter__(self) -> "_QueueSubscriber":
+        return self
+
+    async def __anext__(self) -> dict:
+        q = self._ensure_registered()
+        return await q.get()
+
+    async def aclose(self) -> None:
+        if self._q is not None:
+            try:
+                self._broker_list.remove(self._q)
+            except ValueError:
+                pass  # already removed (e.g. double-close)
+            self._q = None
+
+
 class EventBroker:
     def __init__(self) -> None:
         self._subscribers: list[asyncio.Queue] = []
@@ -21,13 +64,11 @@ class EventBroker:
             except asyncio.QueueFull:
                 pass  # subscriber too slow; drop
 
-    async def subscribe(self) -> AsyncIterator[dict]:
-        """Yield events for one subscriber until cancelled."""
-        q: asyncio.Queue = asyncio.Queue(maxsize=256)
-        self._subscribers.append(q)
-        try:
-            while True:
-                ev = await q.get()
-                yield ev
-        finally:
-            self._subscribers.remove(q)
+    def subscribe(self) -> _QueueSubscriber:
+        """Return an async iterator that yields events for one subscriber.
+
+        The underlying queue is registered lazily on the first iteration
+        so that events published between subscribe() and the first
+        __anext__ call are not captured.
+        """
+        return _QueueSubscriber(self._subscribers)
