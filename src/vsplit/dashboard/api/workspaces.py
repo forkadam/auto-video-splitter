@@ -45,6 +45,7 @@ def get_workspace(slug: str, request: Request) -> dict:
         raise HTTPException(status_code=404, detail=f"workspace not found: {slug}")
     return {
         **_summary(slug, m),
+        "workspace_path": str(workspace_dir(root, slug)),
         "manifest": m.model_dump(mode="json"),
     }
 
