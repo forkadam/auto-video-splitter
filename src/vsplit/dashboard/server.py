@@ -34,6 +34,9 @@ def create_app(
     from vsplit.dashboard.api import config as config_api
     app.include_router(config_api.router)
 
+    from vsplit.dashboard.api import actions as actions_api
+    app.include_router(actions_api.router)
+
     @app.on_event("startup")
     def _startup() -> None:
         watcher.start()
