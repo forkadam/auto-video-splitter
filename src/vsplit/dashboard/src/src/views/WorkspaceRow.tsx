@@ -54,21 +54,22 @@ export function WorkspaceRow({
 
   return (
     <div className={cn(
-      "rounded-md border border-zinc-800 bg-zinc-900/50",
-      selected && "ring-1 ring-blue-500",
+      "rounded-lg border bg-card text-card-foreground transition-colors",
+      "hover:bg-accent/40",
+      selected && "ring-2 ring-primary/60 border-primary/40",
     )}>
-      <div className="w-full px-3 py-2 flex items-center gap-3">
+      <div className="w-full px-4 py-2.5 flex items-center gap-3">
         <button onClick={() => onToggle(ws.slug)} className="flex items-center gap-3 flex-1 text-left">
-          {expanded ? <ChevronDown className="h-4 w-4 text-zinc-500" /> : <ChevronRight className="h-4 w-4 text-zinc-500" />}
+          {expanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
           {ws.first_thumb ? (
             <img
               src={api.workspaces.thumbUrl(ws.slug, ws.first_thumb)}
               alt=""
-              className="w-12 h-7 rounded object-cover bg-zinc-800"
+              className="w-14 h-8 rounded-md object-cover bg-muted ring-1 ring-border"
               loading="lazy"
             />
           ) : (
-            <div className="w-12 h-7 rounded bg-zinc-800" />
+            <div className="w-14 h-8 rounded-md bg-muted ring-1 ring-border" />
           )}
           <div className="font-medium text-sm flex-1 truncate">{ws.slug}</div>
         </button>
@@ -100,30 +101,30 @@ export function WorkspaceRow({
       </div>
 
       {expanded && (
-        <div className="px-3 pb-3 pt-1 border-t border-zinc-800 space-y-2">
+        <div className="px-4 pb-3.5 pt-2 border-t border-border space-y-3">
           {thumbNames.length > 0 && (
-            <div className="flex gap-1 overflow-x-auto">
+            <div className="flex gap-1.5 overflow-x-auto pb-1">
               {thumbNames.map((name) => (
                 <HoverCard key={name} openDelay={100} closeDelay={0}>
                   <HoverCardTrigger asChild>
                     <img
                       src={api.workspaces.thumbUrl(ws.slug, name)}
                       alt={name}
-                      className="h-16 rounded object-cover bg-zinc-800 flex-shrink-0 cursor-zoom-in"
+                      className="h-16 rounded-md object-cover bg-muted ring-1 ring-border flex-shrink-0 cursor-zoom-in transition-transform hover:scale-[1.02]"
                       loading="lazy"
                     />
                   </HoverCardTrigger>
                   <HoverCardContent
                     side="top"
                     align="center"
-                    className="w-auto p-1 bg-zinc-950 border-zinc-700"
+                    className="w-auto p-1.5 shadow-2xl"
                   >
                     <img
                       src={api.workspaces.thumbUrl(ws.slug, name)}
                       alt={name}
                       className="max-w-[480px] max-h-[360px] rounded"
                     />
-                    <div className="px-2 py-1 text-xs text-zinc-400 font-mono">
+                    <div className="px-2 py-1 text-xs text-muted-foreground font-mono">
                       {name}
                     </div>
                   </HoverCardContent>

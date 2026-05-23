@@ -61,23 +61,26 @@ export default function App() {
         selected={selected}
         onCleared={() => { setSelected(new Set()); refetch() }}
       />
-      <header className="border-b border-zinc-800 px-4 py-3 flex items-center gap-4">
-        <h1 className="text-lg font-semibold">vsplit dashboard</h1>
-        <div className="text-sm text-zinc-400">
+      <header className="sticky top-0 z-20 backdrop-blur-md bg-background/80 border-b border-border px-6 py-3.5 flex items-center gap-4">
+        <div className="size-7 rounded-md bg-gradient-to-br from-primary to-primary/40 shadow-lg shadow-primary/20" />
+        <h1 className="text-base font-semibold tracking-tight">vsplit dashboard</h1>
+        <div className="text-sm text-muted-foreground">
           {visible.length} of {workspaces.length} workspace{workspaces.length === 1 ? "" : "s"}
         </div>
         <Button variant="ghost" size="icon" className="ml-auto" onClick={() => setConfigOpen(true)}>
           <Settings className="h-4 w-4" />
         </Button>
       </header>
-      <main className="p-4">
+      <main className="max-w-6xl mx-auto p-6">
         <FilterBar value={filter} onChange={setFilter} />
         {workspaces.length === 0 ? (
-          <div className="text-zinc-500">No workspaces yet. Run <code className="text-zinc-300">vsplit scan</code> to adopt files.</div>
+          <div className="text-muted-foreground text-sm py-12 text-center">
+            No workspaces yet. Run <code className="text-foreground bg-muted px-1.5 py-0.5 rounded">vsplit scan</code> to adopt files.
+          </div>
         ) : visible.length === 0 ? (
-          <div className="text-zinc-500">No workspaces match the current filter.</div>
+          <div className="text-muted-foreground text-sm py-12 text-center">No workspaces match the current filter.</div>
         ) : (
-          <div className="space-y-1">
+          <div className="space-y-2">
             {visible.map((ws) => (
               <WorkspaceRow
                 key={ws.slug}

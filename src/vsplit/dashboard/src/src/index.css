@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -26,51 +28,68 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+:root {
+  --radius: 0.625rem;
+  /* Light fallback — we run dark by default; kept for completeness. */
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+}
+
+.dark {
+  /* Modern dark palette: cool near-black background, vivid indigo primary,
+     subtle but visible borders with translucency, slightly larger radii. */
+  --background: oklch(0.155 0.013 254);            /* near-black, faint cool tint */
+  --foreground: oklch(0.96 0.005 250);              /* warm off-white */
+  --card: oklch(0.195 0.015 256);                   /* layered up from bg */
+  --card-foreground: oklch(0.96 0.005 250);
+  --popover: oklch(0.21 0.018 257);                 /* solid for menus/drawers */
+  --popover-foreground: oklch(0.96 0.005 250);
+  --primary: oklch(0.66 0.18 268);                  /* vivid indigo-violet */
+  --primary-foreground: oklch(0.98 0 0);
+  --secondary: oklch(0.27 0.018 256);
+  --secondary-foreground: oklch(0.96 0.005 250);
+  --muted: oklch(0.24 0.014 256);
+  --muted-foreground: oklch(0.66 0.018 257);
+  --accent: oklch(0.3 0.04 268);                    /* indigo-tinted hover */
+  --accent-foreground: oklch(0.97 0.005 250);
+  --destructive: oklch(0.62 0.21 25);
+  --destructive-foreground: oklch(0.98 0 0);
+  --border: oklch(1 0 0 / 0.10);                    /* 10% white, visible on dark */
+  --input: oklch(1 0 0 / 0.14);
+  --ring: oklch(0.66 0.18 268 / 0.6);               /* indigo focus ring */
+}
+
 @layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --radius: 0.5rem;
+  * {
+    border-color: var(--border);
   }
-
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+  html, body, #root {
+    @apply h-full font-sans antialiased;
+    background-color: var(--background);
+    color: var(--foreground);
   }
-
-  html, body, #root { @apply h-full bg-zinc-950 text-zinc-100 font-sans; }
+  /* Subtle ambient gradient for visual interest behind the app */
+  body {
+    background-image:
+      radial-gradient(at 20% 0%, oklch(0.66 0.18 268 / 0.06), transparent 40%),
+      radial-gradient(at 80% 100%, oklch(0.7 0.18 200 / 0.05), transparent 40%);
+    background-attachment: fixed;
+  }
 }
