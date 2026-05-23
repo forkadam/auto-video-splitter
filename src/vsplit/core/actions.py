@@ -119,11 +119,14 @@ def run_workspaces(
     from_: str | None = None,
     through: str | None = None,
     stage_factory: Callable[[str], object] | None = None,
+    broker=None,  # vsplit.dashboard.sse.EventBroker | None
 ) -> None:
     """Dispatch the orchestrator for the given workspaces.
 
     Mutually exclusive: `only` overrides `from_`/`through`. Defaults to
     running every stage from probe to verify.
+
+    If `broker` is provided, publishes run_started/run_finished events per slug.
     """
     from vsplit.core.orchestrator import Workspace, dispatch
 
@@ -146,6 +149,10 @@ def run_workspaces(
             source_path=working_root / m.source.relative_path,
         ))
 
+    if broker:
+        for ws in workspaces:
+            broker.publish({"type": "run_started", "slug": ws.slug, "stages": stages_to_run})
+
     dispatch(
         workspaces=workspaces,
         working_root=working_root,
@@ -154,3 +161,7 @@ def run_workspaces(
         stages_to_run=stages_to_run,
         stage_factory=stage_factory or _default_stage_factory,
     )
+
+    if broker:
+        for ws in workspaces:
+            broker.publish({"type": "run_finished", "slug": ws.slug, "ok": True})

@@ -72,10 +72,12 @@ async def run_one(slug: str, body: RunBody, request: Request) -> dict:
         for k, v in body.concurrency_overrides.items():
             cfg.concurrency[k] = v
     cancel_event = threading.Event()
+    broker = request.app.state.broker  # NEW
     await run_in_threadpool(
         run_workspaces, root, [slug],
         config=cfg, cancel_event=cancel_event,
         only=body.only, from_=body.from_, through=body.through,
+        broker=broker,  # NEW
     )
     return {"ok": True}
 
@@ -133,9 +135,11 @@ async def batch_run(body: BatchRun, request: Request) -> dict:
         for k, v in body.concurrency_overrides.items():
             cfg.concurrency[k] = v
     cancel_event = threading.Event()
+    broker = request.app.state.broker  # NEW
     await run_in_threadpool(
         run_workspaces, root, body.slugs,
         config=cfg, cancel_event=cancel_event,
         only=body.only, from_=body.from_, through=body.through,
+        broker=broker,  # NEW
     )
     return {"ok": True}
