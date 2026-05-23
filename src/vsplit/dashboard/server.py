@@ -25,6 +25,9 @@ def create_app(
     watcher = ManifestWatcher(working_root, broker)
     app.state.watcher = watcher
 
+    from vsplit.dashboard.api import workspaces as workspaces_api
+    app.include_router(workspaces_api.router)
+
     @app.on_event("startup")
     def _startup() -> None:
         watcher.start()
