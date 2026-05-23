@@ -35,6 +35,9 @@ dev = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/vsplit"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"src/vsplit/dashboard/dist" = "vsplit/dashboard/dist"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
