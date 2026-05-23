@@ -1,0 +1,2 @@
+# Un-ignore the committed frontend build output
+!dist/
