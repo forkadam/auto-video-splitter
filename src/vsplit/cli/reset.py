@@ -1,20 +1,15 @@
 from __future__ import annotations
-import shutil
 from pathlib import Path
 import click
 from rich.console import Console
 from vsplit.cli._filter import parse_filter, apply_filters, Predicate
+from vsplit.core.actions import reset_workspaces
 from vsplit.core.index import load_index
-from vsplit.core.manifest import load_manifest, save_manifest
+from vsplit.core.manifest import load_manifest
 from vsplit.core.paths import workspace_dir
-from vsplit.schemas.manifest import STAGE_NAMES, StageBlock
+from vsplit.schemas.manifest import STAGE_NAMES
 
 console = Console()
-
-_STAGE_SUBDIRS = {
-    "probe": "probe", "detect": "detect", "preview": "preview",
-    "review": "decisions", "plan": "plan", "split": "output", "verify": None,
-}
 
 
 @click.command(name="reset")
@@ -49,15 +44,7 @@ def reset_cmd(ctx, slug_glob, from_stage, reset_all, filters, force):
     ):
         return
 
-    start = 0 if reset_all else STAGE_NAMES.index(from_stage)
-    targets = list(STAGE_NAMES[start:])
+    from_eff = "probe" if reset_all else from_stage
+    reset_workspaces(working_root, slugs, from_=from_eff)
     for slug in slugs:
-        ws = workspace_dir(working_root, slug)
-        m = load_manifest(ws)
-        for stage_name in targets:
-            sub = _STAGE_SUBDIRS.get(stage_name)
-            if sub:
-                shutil.rmtree(ws / sub, ignore_errors=True)
-            m.stages[stage_name] = StageBlock(status="pending")
-        save_manifest(ws, m)
-        console.print(f"[green]reset[/]: {slug} from={targets[0]}")
+        console.print(f"[green]reset[/]: {slug} from={from_eff}")

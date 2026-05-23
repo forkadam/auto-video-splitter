@@ -7,6 +7,7 @@ from pathlib import Path
 from vsplit.core.index import load_index, save_index
 from vsplit.core.manifest import load_manifest, save_manifest
 from vsplit.core.paths import workspace_dir
+from vsplit.schemas.manifest import STAGE_NAMES, StageBlock
 
 
 def clean_workspaces(working_root: Path, slugs: list[str]) -> int:
@@ -48,3 +49,32 @@ def approve_workspaces(working_root: Path, slugs: list[str]) -> int:
         save_manifest(ws, m)
         approved += 1
     return approved
+
+
+_STAGE_SUBDIRS = {
+    "probe": "probe", "detect": "detect", "preview": "preview",
+    "review": "decisions", "plan": "plan", "split": "output", "verify": None,
+}
+
+
+def reset_workspaces(working_root: Path, slugs: list[str], *, from_: str) -> None:
+    """Reset each workspace's stages starting at `from_` (inclusive).
+
+    Deletes on-disk artifacts for affected stages and re-pends them.
+    """
+    if from_ not in STAGE_NAMES:
+        raise ValueError(f"unknown stage: {from_!r}")
+    start = STAGE_NAMES.index(from_)
+    targets = list(STAGE_NAMES[start:])
+    for slug in slugs:
+        ws = workspace_dir(working_root, slug)
+        try:
+            m = load_manifest(ws)
+        except FileNotFoundError:
+            continue
+        for stage_name in targets:
+            sub = _STAGE_SUBDIRS.get(stage_name)
+            if sub:
+                shutil.rmtree(ws / sub, ignore_errors=True)
+            m.stages[stage_name] = StageBlock(status="pending")
+        save_manifest(ws, m)
