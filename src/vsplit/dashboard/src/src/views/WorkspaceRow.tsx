@@ -27,6 +27,7 @@ type Props = {
 
 type Detail = {
   workspace_path?: string
+  thumb_names?: string[]
   manifest?: {
     stages?: Record<string, { artifacts?: Record<string, unknown> }>
   }
@@ -42,9 +43,7 @@ export function WorkspaceRow({
     api.workspaces.detail(ws.slug).then((d) => setDetail(d as unknown as Detail))
   }, [expanded, ws.slug])
 
-  const imagesGenerated = Number(
-    detail?.manifest?.stages?.preview?.artifacts?.images_generated ?? 0,
-  )
+  const thumbNames = detail?.thumb_names ?? []
 
   const previewHref = detail?.workspace_path
     ? `file:///${detail.workspace_path.replace(/\\/g, "/")}/preview/index.html`
@@ -58,7 +57,16 @@ export function WorkspaceRow({
       <div className="w-full px-3 py-2 flex items-center gap-3">
         <button onClick={() => onToggle(ws.slug)} className="flex items-center gap-3 flex-1 text-left">
           {expanded ? <ChevronDown className="h-4 w-4 text-zinc-500" /> : <ChevronRight className="h-4 w-4 text-zinc-500" />}
-          <div className="w-12 h-7 rounded bg-zinc-800" />
+          {ws.first_thumb ? (
+            <img
+              src={api.workspaces.thumbUrl(ws.slug, ws.first_thumb)}
+              alt=""
+              className="w-12 h-7 rounded object-cover bg-zinc-800"
+              loading="lazy"
+            />
+          ) : (
+            <div className="w-12 h-7 rounded bg-zinc-800" />
+          )}
           <div className="font-medium text-sm flex-1 truncate">{ws.slug}</div>
         </button>
         <Checkbox
@@ -90,10 +98,17 @@ export function WorkspaceRow({
 
       {expanded && (
         <div className="px-3 pb-3 pt-1 border-t border-zinc-800 space-y-2">
-          {imagesGenerated > 0 && (
+          {thumbNames.length > 0 && (
             <div className="flex gap-1 overflow-x-auto">
-              {Array.from({ length: Math.min(imagesGenerated, 6) }).map((_, i) => (
-                <div key={i} className="w-20 h-12 rounded bg-zinc-800 flex-shrink-0" />
+              {thumbNames.map((name) => (
+                <img
+                  key={name}
+                  src={api.workspaces.thumbUrl(ws.slug, name)}
+                  alt={name}
+                  title={name}
+                  className="h-16 rounded object-cover bg-zinc-800 flex-shrink-0"
+                  loading="lazy"
+                />
               ))}
             </div>
           )}

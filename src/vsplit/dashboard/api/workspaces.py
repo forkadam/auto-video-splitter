@@ -17,8 +17,18 @@ def _require_slug(working_root: Path, slug: str) -> None:
         raise HTTPException(status_code=404, detail=f"workspace not found: {slug}")
 
 
-def _summary(slug: str, m) -> dict:
+def _list_thumbs(root: Path, slug: str) -> list[str]:
+    """Sorted list of scene-thumbnail filenames in the workspace's preview dir."""
+    img_dir = workspace_dir(root, slug) / "preview" / "images"
+    if not img_dir.is_dir():
+        return []
+    return sorted(p.name for p in img_dir.iterdir()
+                  if p.is_file() and p.suffix.lower() == ".jpg")
+
+
+def _summary(root: Path, slug: str, m) -> dict:
     statuses = [b.status for b in m.stages.values()]
+    thumbs = _list_thumbs(root, slug)
     return {
         "slug": slug,
         "source": m.source.relative_path,
@@ -26,6 +36,7 @@ def _summary(slug: str, m) -> dict:
         "any_failed": "failed" in statuses,
         "any_awaiting": "awaiting_user" in statuses,
         "all_done": all(s == "done" for s in statuses),
+        "first_thumb": thumbs[0] if thumbs else None,
     }
 
 
@@ -39,7 +50,7 @@ def list_workspaces(request: Request) -> dict:
             m = load_manifest(workspace_dir(root, slug))
         except FileNotFoundError:
             continue
-        items.append(_summary(slug, m))
+        items.append(_summary(root, slug, m))
     return {"workspaces": items}
 
 
@@ -52,8 +63,9 @@ def get_workspace(slug: str, request: Request) -> dict:
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"workspace not found: {slug}")
     return {
-        **_summary(slug, m),
+        **_summary(root, slug, m),
         "workspace_path": str(workspace_dir(root, slug)),
+        "thumb_names": _list_thumbs(root, slug),
         "manifest": m.model_dump(mode="json"),
     }
 

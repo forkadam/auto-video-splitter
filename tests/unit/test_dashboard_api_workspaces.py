@@ -76,6 +76,34 @@ def test_thumb_traversal_rejected(tmp_path: Path) -> None:
     assert r.status_code in (400, 404)
 
 
+def test_workspace_lists_thumbs_when_preview_dir_exists(tmp_path: Path) -> None:
+    _seed(tmp_path, "alpha")
+    img_dir = workspace_dir(tmp_path, "alpha") / "preview" / "images"
+    img_dir.mkdir(parents=True)
+    (img_dir / "scene-001-01.jpg").write_bytes(b"\xff\xd8\xff\xe0a")
+    (img_dir / "scene-001-02.jpg").write_bytes(b"\xff\xd8\xff\xe0b")
+    (img_dir / "scene-002-01.jpg").write_bytes(b"\xff\xd8\xff\xe0c")
+    client = TestClient(create_app(tmp_path))
+
+    # list response carries first_thumb
+    r = client.get("/api/workspaces")
+    entry = next(w for w in r.json()["workspaces"] if w["slug"] == "alpha")
+    assert entry["first_thumb"] == "scene-001-01.jpg"
+
+    # detail response carries the full sorted thumb list
+    r = client.get("/api/workspaces/alpha")
+    assert r.json()["thumb_names"] == [
+        "scene-001-01.jpg", "scene-001-02.jpg", "scene-002-01.jpg",
+    ]
+
+
+def test_workspace_no_thumbs_when_preview_dir_missing(tmp_path: Path) -> None:
+    _seed(tmp_path, "alpha")
+    client = TestClient(create_app(tmp_path))
+    assert client.get("/api/workspaces").json()["workspaces"][0]["first_thumb"] is None
+    assert client.get("/api/workspaces/alpha").json()["thumb_names"] == []
+
+
 def test_workspace_detail_rejects_path_traversal(tmp_path: Path) -> None:
     _seed(tmp_path, "alpha")
     client = TestClient(create_app(tmp_path))

@@ -26,6 +26,7 @@ export type Workspace = {
   any_failed: boolean
   any_awaiting: boolean
   all_done: boolean
+  first_thumb: string | null
 }
 
 export const api = {
