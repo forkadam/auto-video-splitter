@@ -7,6 +7,7 @@ import { WorkspaceRow } from "./views/WorkspaceRow"
 import { FilterBar, type FilterState } from "./views/FilterBar"
 import { BatchActionBar } from "./views/BatchActionBar"
 import { LogDrawer } from "./views/LogDrawer"
+import { ConfigDrawer } from "./views/ConfigDrawer"
 
 const STAGES = ["probe", "detect", "preview", "review", "plan", "split", "verify"]
 
@@ -31,6 +32,7 @@ export default function App() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [filter, setFilter] = useState<FilterState>({ status: "any", stage: "any", slug: "" })
   const [logOpen, setLogOpen] = useState<{ slug: string; stage: string } | null>(null)
+  const [configOpen, setConfigOpen] = useState(false)
 
   const refetch = () => {
     api.workspaces.list().then((d) => setWorkspaces(d.workspaces))
@@ -64,7 +66,9 @@ export default function App() {
         <div className="text-sm text-zinc-400">
           {visible.length} of {workspaces.length} workspace{workspaces.length === 1 ? "" : "s"}
         </div>
-        <Button variant="ghost" size="icon" className="ml-auto"><Settings className="h-4 w-4" /></Button>
+        <Button variant="ghost" size="icon" className="ml-auto" onClick={() => setConfigOpen(true)}>
+          <Settings className="h-4 w-4" />
+        </Button>
       </header>
       <main className="p-4">
         <FilterBar value={filter} onChange={setFilter} />
@@ -93,6 +97,7 @@ export default function App() {
         stage={logOpen?.stage ?? null}
         onClose={() => setLogOpen(null)}
       />
+      <ConfigDrawer open={configOpen} onOpenChange={setConfigOpen} />
     </div>
   )
 }
