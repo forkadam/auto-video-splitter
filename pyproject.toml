@@ -16,6 +16,8 @@ dependencies = [
     "rich>=13.7",
     "structlog>=24.1",
     "platformdirs>=4.0",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
 ]
 
 [project.scripts]
