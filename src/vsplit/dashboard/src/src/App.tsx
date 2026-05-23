@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { WorkspaceRow } from "./views/WorkspaceRow"
 import { FilterBar, type FilterState } from "./views/FilterBar"
 import { BatchActionBar } from "./views/BatchActionBar"
+import { LogDrawer } from "./views/LogDrawer"
 
 const STAGES = ["probe", "detect", "preview", "review", "plan", "split", "verify"]
 
@@ -29,6 +30,7 @@ export default function App() {
   const [expanded, setExpanded] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [filter, setFilter] = useState<FilterState>({ status: "any", stage: "any", slug: "" })
+  const [logOpen, setLogOpen] = useState<{ slug: string; stage: string } | null>(null)
 
   const refetch = () => {
     api.workspaces.list().then((d) => setWorkspaces(d.workspaces))
@@ -80,11 +82,17 @@ export default function App() {
                 onSelectChange={toggleSelect}
                 expanded={expanded === ws.slug}
                 onToggle={toggleExpand}
+                onOpenLog={(slug, stage) => setLogOpen({ slug, stage })}
               />
             ))}
           </div>
         )}
       </main>
+      <LogDrawer
+        slug={logOpen?.slug ?? null}
+        stage={logOpen?.stage ?? null}
+        onClose={() => setLogOpen(null)}
+      />
     </div>
   )
 }

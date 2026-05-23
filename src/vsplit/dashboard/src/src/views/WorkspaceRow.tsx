@@ -22,6 +22,7 @@ type Props = {
   onSelectChange: (slug: string, selected: boolean) => void
   expanded: boolean
   onToggle: (slug: string) => void
+  onOpenLog: (slug: string, stage: string) => void
 }
 
 type Detail = {
@@ -31,7 +32,9 @@ type Detail = {
   }
 }
 
-export function WorkspaceRow({ ws, selected, onSelectChange, expanded, onToggle }: Props) {
+export function WorkspaceRow({
+  ws, selected, onSelectChange, expanded, onToggle, onOpenLog,
+}: Props) {
   const [detail, setDetail] = useState<Detail | null>(null)
 
   useEffect(() => {
@@ -52,28 +55,38 @@ export function WorkspaceRow({ ws, selected, onSelectChange, expanded, onToggle 
       "rounded-md border border-zinc-800 bg-zinc-900/50",
       selected && "ring-1 ring-blue-500",
     )}>
-      <button
-        onClick={() => onToggle(ws.slug)}
-        className="w-full px-3 py-2 flex items-center gap-3 text-left"
-      >
-        {expanded ? <ChevronDown className="h-4 w-4 text-zinc-500" /> : <ChevronRight className="h-4 w-4 text-zinc-500" />}
+      <div className="w-full px-3 py-2 flex items-center gap-3">
+        <button onClick={() => onToggle(ws.slug)} className="flex items-center gap-3 flex-1 text-left">
+          {expanded ? <ChevronDown className="h-4 w-4 text-zinc-500" /> : <ChevronRight className="h-4 w-4 text-zinc-500" />}
+          <div className="w-12 h-7 rounded bg-zinc-800" />
+          <div className="font-medium text-sm flex-1 truncate">{ws.slug}</div>
+        </button>
         <Checkbox
           checked={selected}
           onCheckedChange={(c) => onSelectChange(ws.slug, !!c)}
-          onClick={(e) => e.stopPropagation()}
         />
-        <div className="w-12 h-7 rounded bg-zinc-800" /> {/* thumb placeholder */}
-        <div className="font-medium text-sm flex-1 truncate">{ws.slug}</div>
         <div className="flex gap-0.5">
-          {STAGES.map((s) => (
-            <div
-              key={s}
-              title={`${s}: ${ws.stages[s] ?? "pending"}`}
-              className={cn("w-2.5 h-2.5 rounded-sm", STATUS_COLOR[ws.stages[s] ?? "pending"])}
-            />
-          ))}
+          {STAGES.map((s) => {
+            const status = ws.stages[s] ?? "pending"
+            const isFailed = status === "failed"
+            return (
+              <button
+                key={s}
+                type="button"
+                title={`${s}: ${status}${isFailed ? " (click to view log)" : ""}`}
+                onClick={isFailed ? () => onOpenLog(ws.slug, s) : undefined}
+                disabled={!isFailed}
+                className={cn(
+                  "w-2.5 h-2.5 rounded-sm",
+                  STATUS_COLOR[status],
+                  isFailed && "cursor-pointer hover:ring-1 hover:ring-red-300",
+                  !isFailed && "cursor-default",
+                )}
+              />
+            )
+          })}
         </div>
-      </button>
+      </div>
 
       {expanded && (
         <div className="px-3 pb-3 pt-1 border-t border-zinc-800 space-y-2">
