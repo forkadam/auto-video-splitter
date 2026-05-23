@@ -7,4 +7,5 @@ dist/
 build/
 .venv/
 .vsplit/
+.superpowers/
 uv.lock
