@@ -3,9 +3,12 @@ import { api, type Workspace } from "@/lib/api"
 import { useSSE } from "@/lib/sse"
 import { Settings } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { WorkspaceRow } from "./views/WorkspaceRow"
 
 export default function App() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
 
   const refetch = () => {
     api.workspaces.list().then((d) => setWorkspaces(d.workspaces))
@@ -19,6 +22,13 @@ export default function App() {
     }
   })
 
+  const toggleExpand = (slug: string) => setExpanded((e) => e === slug ? null : slug)
+  const toggleSelect = (slug: string, on: boolean) => setSelected((s) => {
+    const next = new Set(s)
+    if (on) next.add(slug); else next.delete(slug)
+    return next
+  })
+
   return (
     <div className="min-h-full">
       <header className="border-b border-zinc-800 px-4 py-3 flex items-center gap-4">
@@ -30,7 +40,18 @@ export default function App() {
         {workspaces.length === 0 ? (
           <div className="text-zinc-500">No workspaces yet. Run <code className="text-zinc-300">vsplit scan</code> to adopt files.</div>
         ) : (
-          <div className="text-zinc-500">[ workspace list goes here ]</div>
+          <div className="space-y-1">
+            {workspaces.map((ws) => (
+              <WorkspaceRow
+                key={ws.slug}
+                ws={ws}
+                selected={selected.has(ws.slug)}
+                onSelectChange={toggleSelect}
+                expanded={expanded === ws.slug}
+                onToggle={toggleExpand}
+              />
+            ))}
+          </div>
         )}
       </main>
     </div>
