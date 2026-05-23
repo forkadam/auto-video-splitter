@@ -30,3 +30,33 @@ def test_get_config_schema_has_detect_section(tmp_path: Path) -> None:
     schema = r.json()
     # Pydantic JSON-schema nests via $defs / properties; just check Detect appears.
     assert "DetectConfig" in str(schema)
+
+
+def test_put_structured_config(tmp_path: Path) -> None:
+    client = TestClient(create_app(tmp_path))
+    r = client.put("/api/config", json={"detect": {"threshold": 42.0}})
+    assert r.status_code == 200
+    cfg = client.get("/api/config").json()
+    assert cfg["detect"]["threshold"] == 42.0
+
+
+def test_put_structured_config_rejects_invalid(tmp_path: Path) -> None:
+    client = TestClient(create_app(tmp_path))
+    r = client.put("/api/config", json={"detect": {"detector": "not-a-detector"}})
+    assert r.status_code == 422
+
+
+def test_put_raw_config(tmp_path: Path) -> None:
+    client = TestClient(create_app(tmp_path))
+    r = client.put(
+        "/api/config/raw",
+        json={"text": "detect:\n  threshold: 19.0\n"},
+    )
+    assert r.status_code == 200
+    assert client.get("/api/config").json()["detect"]["threshold"] == 19.0
+
+
+def test_put_raw_config_invalid_yaml(tmp_path: Path) -> None:
+    client = TestClient(create_app(tmp_path))
+    r = client.put("/api/config/raw", json={"text": "detect:\n  threshold: : :"})
+    assert r.status_code == 400
