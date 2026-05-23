@@ -114,6 +114,17 @@ uv run vsplit -w "D:\vacation\japan-2025" --json status --awaiting-user
 
 ## Commands
 
+| Command | Purpose |
+|---|---|
+| `vsplit scan [path]` | Discover and adopt video files |
+| `vsplit run [filter]` | Advance pipelines |
+| `vsplit status` | Show pipeline progress |
+| `vsplit approve <filter>` | Mark workspaces past the review gate |
+| `vsplit reset <filter> --from <stage>` | Re-run stages |
+| `vsplit clean <filter>` | Delete workspace state (source files untouched) |
+| `vsplit one <file>` | Single-file shortcut |
+| `vsplit dashboard [--port N]` | Launch the local web dashboard |
+
 ### `scan [PATH]`
 
 Walks the working root looking for video files; adopts any new ones (creates workspace + manifest + index entry). Idempotent — files already in the index by hash are silently skipped.
@@ -269,6 +280,34 @@ uv run vsplit one IMG_1754.MOV --auto-approve        # end-to-end with default k
 ```
 
 Sets the working dir to the file's parent for this invocation (so output lands at `<parent>/.vsplit/workspaces/<slug>/`).
+
+---
+
+### `dashboard`
+
+Launches a localhost web UI for managing workspaces, running commands in bulk, and editing config.
+
+| Option | Default | What it does |
+|---|---|---|
+| `--port N` | 8765 | TCP port to bind. Must be free. |
+| `--host ADDR` | 127.0.0.1 | Bind address. Localhost-only by default; do not expose. |
+| `--no-open` | off | Skip auto-opening the browser. |
+
+```bash
+uv run vsplit dashboard
+# Opens http://127.0.0.1:8765 in your default browser.
+```
+
+Features:
+- Hybrid collapsible list of every workspace; per-stage status pips.
+- Per-row actions: Run, Reset (with stage picker), Clean (confirms), Approve.
+- Bulk selection + filter bar (status/stage/slug glob mirrors CLI grammar).
+- Inline log viewer for failed stages — click a red pip to open the log drawer.
+- Config drawer: structured form for common fields + collapsible raw YAML pane.
+- Live status updates via Server-Sent Events (no manual refresh).
+
+Out of scope for v1: inline `cuts.json` editor (use your text editor), multi-user
+or LAN access, mobile layouts, light theme.
 
 ---
 
