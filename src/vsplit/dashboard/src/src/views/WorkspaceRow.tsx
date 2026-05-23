@@ -3,6 +3,9 @@ import { ChevronRight, ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  HoverCard, HoverCardContent, HoverCardTrigger,
+} from "@/components/ui/hover-card"
 import { api, type Workspace } from "@/lib/api"
 
 const STAGES = ["probe", "detect", "preview", "review", "plan", "split", "verify"] as const
@@ -101,14 +104,30 @@ export function WorkspaceRow({
           {thumbNames.length > 0 && (
             <div className="flex gap-1 overflow-x-auto">
               {thumbNames.map((name) => (
-                <img
-                  key={name}
-                  src={api.workspaces.thumbUrl(ws.slug, name)}
-                  alt={name}
-                  title={name}
-                  className="h-16 rounded object-cover bg-zinc-800 flex-shrink-0"
-                  loading="lazy"
-                />
+                <HoverCard key={name} openDelay={100} closeDelay={0}>
+                  <HoverCardTrigger asChild>
+                    <img
+                      src={api.workspaces.thumbUrl(ws.slug, name)}
+                      alt={name}
+                      className="h-16 rounded object-cover bg-zinc-800 flex-shrink-0 cursor-zoom-in"
+                      loading="lazy"
+                    />
+                  </HoverCardTrigger>
+                  <HoverCardContent
+                    side="top"
+                    align="center"
+                    className="w-auto p-1 bg-zinc-950 border-zinc-700"
+                  >
+                    <img
+                      src={api.workspaces.thumbUrl(ws.slug, name)}
+                      alt={name}
+                      className="max-w-[480px] max-h-[360px] rounded"
+                    />
+                    <div className="px-2 py-1 text-xs text-zinc-400 font-mono">
+                      {name}
+                    </div>
+                  </HoverCardContent>
+                </HoverCard>
               ))}
             </div>
           )}
