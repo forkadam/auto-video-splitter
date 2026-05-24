@@ -1,12 +1,15 @@
 from __future__ import annotations
+import json
 import webbrowser
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
 
+from vsplit.core.hash import content_hash
 from vsplit.core.index import load_index
 from vsplit.core.manifest import load_manifest
 from vsplit.core.paths import workspace_dir
+from vsplit.schemas.cuts import CutsJson
 
 router = APIRouter(prefix="/api/workspaces", tags=["workspaces"])
 
@@ -25,6 +28,23 @@ def _list_thumbs(root: Path, slug: str) -> list[str]:
         return []
     return sorted(p.name for p in img_dir.iterdir()
                   if p.is_file() and p.suffix.lower() == ".jpg")
+
+
+def _scene_thumbs(root: Path, slug: str, scene_ids: list[int]) -> dict[str, str]:
+    """For each scene id, the first sorted thumbnail filename matching scene-{id:03d}-*.jpg."""
+    img_dir = workspace_dir(root, slug) / "preview" / "images"
+    if not img_dir.is_dir():
+        return {}
+    all_names = sorted(p.name for p in img_dir.iterdir()
+                       if p.is_file() and p.suffix.lower() == ".jpg")
+    out: dict[str, str] = {}
+    for sid in scene_ids:
+        prefix = f"scene-{sid:03d}-"
+        for name in all_names:
+            if name.startswith(prefix):
+                out[str(sid)] = name
+                break
+    return out
 
 
 def _summary(root: Path, slug: str, m) -> dict:
@@ -85,6 +105,23 @@ def open_preview(slug: str, request: Request) -> dict:
         raise HTTPException(status_code=404, detail="preview not generated yet")
     webbrowser.open(p.as_uri())
     return {"opened": True, "path": str(p)}
+
+
+@router.get("/{slug}/cuts")
+def get_cuts(slug: str, request: Request) -> dict:
+    root: Path = request.app.state.working_root
+    _require_slug(root, slug)
+    cuts_path = workspace_dir(root, slug) / "decisions" / "cuts.json"
+    if not cuts_path.is_file():
+        raise HTTPException(status_code=404, detail="cuts.json not yet written")
+    raw = cuts_path.read_text()
+    parsed = CutsJson.model_validate_json(raw)
+    scene_ids = [s.id for s in parsed.scenes]
+    return {
+        "cuts": json.loads(raw),
+        "hash": content_hash(cuts_path),
+        "scene_thumbs": _scene_thumbs(root, slug, scene_ids),
+    }
 
 
 @router.get("/{slug}/thumbs/{name}")
