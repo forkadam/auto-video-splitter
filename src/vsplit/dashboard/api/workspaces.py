@@ -126,7 +126,9 @@ def get_cuts(slug: str, request: Request) -> dict:
     try:
         parsed = CutsJson.model_validate_json(raw)
     except ValidationError as e:
-        raise HTTPException(status_code=422, detail=e.errors()) from e
+        # include_context=False drops non-JSON-serializable ValueError refs
+        # that field_validators put into ctx.
+        raise HTTPException(status_code=422, detail=e.errors(include_context=False)) from e
     scene_ids = [s.id for s in parsed.scenes]
     return {
         "cuts": json.loads(raw),

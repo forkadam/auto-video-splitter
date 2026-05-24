@@ -101,6 +101,20 @@ def test_get_cuts_422_when_file_malformed(tmp_path: Path) -> None:
     assert r.status_code == 422
 
 
+def test_get_cuts_422_when_timestamp_invalid_on_disk(tmp_path: Path) -> None:
+    """Hand-edit corruption: bad timestamp must yield 422 (not 500)."""
+    ws = _seed(tmp_path, "alpha")
+    _seed_cuts(ws, scene_ids=[1])
+    # Corrupt the on-disk file: replace one timestamp with garbage.
+    cuts_path = ws / "decisions" / "cuts.json"
+    text = cuts_path.read_text()
+    text = text.replace('"00:00:01.000"', '"not-a-timestamp"', 1)
+    cuts_path.write_text(text)
+    client = TestClient(create_app(tmp_path))
+    r = client.get("/api/workspaces/alpha/cuts")
+    assert r.status_code == 422
+
+
 def _valid_cuts_body(scene_ids: list[int]) -> dict:
     return {
         "schema_version": 1,
