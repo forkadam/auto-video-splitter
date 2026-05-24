@@ -90,6 +90,26 @@ export function CutsDrawer({ slug, onClose }: Props) {
     }
   }
 
+  const saveAndContinue = async () => {
+    if (!slug) return
+    if (isDirty) {
+      const ok = await save()
+      if (!ok) return  // error already surfaced by save()
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      await api.workspaces.approve(slug)
+      await api.workspaces.run(slug, {})
+      onClose()
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setError(msg)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <Drawer
       open={forceOpen}
@@ -169,7 +189,9 @@ export function CutsDrawer({ slug, onClose }: Props) {
           <Button variant="secondary" onClick={save} disabled={busy || !isDirty}>
             Save
           </Button>
-          {/* Save & continue lives here too — added in Task 5 */}
+          <Button onClick={saveAndContinue} disabled={busy}>
+            Save & continue
+          </Button>
         </DrawerFooter>
       </DrawerContent>
     </Drawer>
