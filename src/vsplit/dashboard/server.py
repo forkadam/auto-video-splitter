@@ -84,4 +84,9 @@ def run_server(working_root: Path, *, host="127.0.0.1", port=8765, open_browser=
     if open_browser:
         webbrowser.open(url)
     print(f"vsplit dashboard ready at {url}")
-    uvicorn.run(app, host=host, port=port, log_level="info")
+    # Cap graceful-shutdown: browser SSE keep-alives never close on their own,
+    # so Ctrl+C would otherwise wait forever for the /api/events stream.
+    uvicorn.run(
+        app, host=host, port=port, log_level="info",
+        timeout_graceful_shutdown=5,
+    )

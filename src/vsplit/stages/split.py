@@ -25,7 +25,12 @@ class SplitStage(Stage):
                 "-ss", f"{seg['actual_start']:.3f}",
                 "-to", f"{seg['actual_end']:.3f}",
                 "-i", str(ctx.source_path),
-                "-map", "0", "-c", "copy",
+                # iPhone MOV files carry `mebx` Core Media Metadata streams
+                # that MP4 cannot hold — drop all data streams to avoid
+                # "Could not find tag for codec none ... codec not currently
+                # supported in container" (ffmpeg exits with EINVAL).
+                "-map", "0", "-map", "-0:d",
+                "-c", "copy",
                 "-avoid_negative_ts", "make_zero",
                 str(out_path),
             ]
