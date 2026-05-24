@@ -99,3 +99,90 @@ def test_get_cuts_422_when_file_malformed(tmp_path: Path) -> None:
     client = TestClient(create_app(tmp_path))
     r = client.get("/api/workspaces/alpha/cuts")
     assert r.status_code == 422
+
+
+def _valid_cuts_body(scene_ids: list[int]) -> dict:
+    return {
+        "schema_version": 1,
+        "scenes": [
+            {"id": i, "start": f"00:00:0{i}.000", "end": f"00:00:0{i+1}.000",
+             "keep": True, "label": None, "merge_with_next": False}
+            for i in scene_ids
+        ],
+    }
+
+
+def test_put_cuts_happy_path(tmp_path: Path) -> None:
+    ws = _seed(tmp_path, "alpha")
+    cuts_path = _seed_cuts(ws, scene_ids=[1, 2])
+    client = TestClient(create_app(tmp_path))
+    initial = client.get("/api/workspaces/alpha/cuts").json()
+    new_cuts = _valid_cuts_body([1, 2])
+    new_cuts["scenes"][0]["keep"] = False
+    new_cuts["scenes"][1]["label"] = "ending"
+    r = client.put("/api/workspaces/alpha/cuts",
+                   json={"cuts": new_cuts, "expected_hash": initial["hash"]})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["hash"].startswith("sha256:") and body["hash"] != initial["hash"]
+    on_disk = json.loads(cuts_path.read_text())
+    assert on_disk["scenes"][0]["keep"] is False
+    assert on_disk["scenes"][1]["label"] == "ending"
+
+
+def test_put_cuts_409_on_stale_hash(tmp_path: Path) -> None:
+    ws = _seed(tmp_path, "alpha")
+    _seed_cuts(ws, scene_ids=[1])
+    client = TestClient(create_app(tmp_path))
+    r = client.put("/api/workspaces/alpha/cuts",
+                   json={"cuts": _valid_cuts_body([1]),
+                         "expected_hash": "sha256:0000000000000000"})
+    assert r.status_code == 409
+    body = r.json()
+    assert body["detail"] == "cuts.json changed on disk"
+    assert body["current_hash"].startswith("sha256:")
+
+
+def test_put_cuts_422_schema_error(tmp_path: Path) -> None:
+    ws = _seed(tmp_path, "alpha")
+    _seed_cuts(ws, scene_ids=[1])
+    client = TestClient(create_app(tmp_path))
+    # Bad timestamp format
+    bad = _valid_cuts_body([1])
+    bad["scenes"][0]["start"] = "not-a-timestamp"
+    r = client.put("/api/workspaces/alpha/cuts",
+                   json={"cuts": bad, "expected_hash": None})
+    assert r.status_code == 422
+
+
+def test_put_cuts_422_on_id_drift(tmp_path: Path) -> None:
+    ws = _seed(tmp_path, "alpha")
+    _seed_cuts(ws, scene_ids=[1, 2])  # detect has IDs 1,2
+    client = TestClient(create_app(tmp_path))
+    # cuts body uses IDs 1,3 — drift
+    bad = _valid_cuts_body([1, 3])
+    r = client.put("/api/workspaces/alpha/cuts",
+                   json={"cuts": bad, "expected_hash": None})
+    assert r.status_code == 422
+    assert "scene" in r.json()["detail"].lower()
+
+
+def test_put_cuts_404_unknown_slug(tmp_path: Path) -> None:
+    client = TestClient(create_app(tmp_path))
+    r = client.put("/api/workspaces/nope/cuts",
+                   json={"cuts": _valid_cuts_body([1]), "expected_hash": None})
+    assert r.status_code == 404
+
+
+def test_put_cuts_writes_atomically_with_trailing_newline(tmp_path: Path) -> None:
+    ws = _seed(tmp_path, "alpha")
+    cuts_path = _seed_cuts(ws, scene_ids=[1])
+    client = TestClient(create_app(tmp_path))
+    initial = client.get("/api/workspaces/alpha/cuts").json()
+    new_cuts = _valid_cuts_body([1])
+    new_cuts["scenes"][0]["label"] = "kept"
+    client.put("/api/workspaces/alpha/cuts",
+               json={"cuts": new_cuts, "expected_hash": initial["hash"]})
+    text = cuts_path.read_text()
+    assert text.endswith("\n")
+    assert "\r\n" not in text  # LF only (atomic_write_text guarantee)

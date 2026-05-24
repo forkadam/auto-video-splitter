@@ -3,16 +3,23 @@ import json
 import webbrowser
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse
-from pydantic import ValidationError
+from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, ValidationError
 
+from vsplit.core.atomic import atomic_write_text
 from vsplit.core.hash import content_hash
 from vsplit.core.index import load_index
 from vsplit.core.manifest import load_manifest
 from vsplit.core.paths import workspace_dir
 from vsplit.schemas.cuts import CutsJson
+from vsplit.stages.review import _validate_ids
 
 router = APIRouter(prefix="/api/workspaces", tags=["workspaces"])
+
+
+class _CutsPutBody(BaseModel):
+    cuts: dict
+    expected_hash: str | None = None
 
 
 def _require_slug(working_root: Path, slug: str) -> None:
@@ -126,6 +133,44 @@ def get_cuts(slug: str, request: Request) -> dict:
         "hash": content_hash(cuts_path),
         "scene_thumbs": _scene_thumbs(root, slug, scene_ids),
     }
+
+
+@router.put("/{slug}/cuts")
+def put_cuts(slug: str, body: _CutsPutBody, request: Request):
+    root: Path = request.app.state.working_root
+    _require_slug(root, slug)
+    ws = workspace_dir(root, slug)
+    cuts_path = ws / "decisions" / "cuts.json"
+    scenes_path = ws / "detect" / "scenes.json"
+    if not scenes_path.is_file():
+        raise HTTPException(status_code=404, detail="detect/scenes.json missing")
+
+    try:
+        parsed = CutsJson.model_validate(body.cuts)
+    except ValidationError as e:
+        # include_context=False drops non-JSON-serializable ValueError refs
+        # that field_validators put into ctx.
+        raise HTTPException(status_code=422, detail=e.errors(include_context=False)) from e
+
+    detected_ids = {s["id"] for s in json.loads(scenes_path.read_text())["scenes"]}
+    try:
+        _validate_ids(parsed, detected_ids)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+    if body.expected_hash is not None and cuts_path.is_file():
+        current = content_hash(cuts_path)
+        if current != body.expected_hash:
+            return JSONResponse(
+                status_code=409,
+                content={"detail": "cuts.json changed on disk", "current_hash": current},
+            )
+
+    atomic_write_text(
+        cuts_path,
+        json.dumps(parsed.model_dump(), indent=2) + "\n",
+    )
+    return {"hash": content_hash(cuts_path)}
 
 
 @router.get("/{slug}/thumbs/{name}")
