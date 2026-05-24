@@ -8,6 +8,7 @@ import { FilterBar, type FilterState } from "./views/FilterBar"
 import { BatchActionBar } from "./views/BatchActionBar"
 import { LogDrawer } from "./views/LogDrawer"
 import { ConfigDrawer } from "./views/ConfigDrawer"
+import { CutsDrawer } from "./views/CutsDrawer"
 
 const STAGES = ["probe", "detect", "preview", "review", "plan", "split", "verify"]
 
@@ -33,6 +34,7 @@ export default function App() {
   const [filter, setFilter] = useState<FilterState>({ status: "any", stage: "any", slug: "" })
   const [logOpen, setLogOpen] = useState<{ slug: string; stage: string } | null>(null)
   const [configOpen, setConfigOpen] = useState(false)
+  const [cutsSlug, setCutsSlug] = useState<string | null>(null)
 
   const refetch = () => {
     api.workspaces.list().then((d) => setWorkspaces(d.workspaces))
@@ -90,6 +92,7 @@ export default function App() {
                 expanded={expanded === ws.slug}
                 onToggle={toggleExpand}
                 onOpenLog={(slug, stage) => setLogOpen({ slug, stage })}
+                onOpenCuts={(slug) => setCutsSlug(slug)}
               />
             ))}
           </div>
@@ -100,6 +103,7 @@ export default function App() {
         stage={logOpen?.stage ?? null}
         onClose={() => setLogOpen(null)}
       />
+      <CutsDrawer slug={cutsSlug} onClose={() => { setCutsSlug(null); refetch() }} />
       <ConfigDrawer open={configOpen} onOpenChange={setConfigOpen} />
     </div>
   )
