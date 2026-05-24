@@ -19,6 +19,26 @@ async function jsonRequest<T>(
   return res.json() as Promise<T>
 }
 
+export type CutsScene = {
+  id: number
+  start: string
+  end: string
+  keep: boolean
+  label: string | null
+  merge_with_next: boolean
+}
+
+export type CutsBody = {
+  schema_version: number
+  scenes: CutsScene[]
+}
+
+export type CutsResponse = {
+  cuts: CutsBody
+  hash: string
+  scene_thumbs: Record<string, string>
+}
+
 export type Workspace = {
   slug: string
   source: string
@@ -45,6 +65,12 @@ export const api = {
       jsonRequest<{ approved: number }>("POST", `/api/workspaces/${slug}/approve`),
     openPreview: (slug: string) =>
       jsonRequest<{ opened: boolean; path: string }>("POST", `/api/workspaces/${slug}/open-preview`),
+    cuts: {
+      get: (slug: string) =>
+        jsonRequest<CutsResponse>("GET", `/api/workspaces/${slug}/cuts`),
+      put: (slug: string, body: { cuts: CutsBody; expected_hash: string | null }) =>
+        jsonRequest<{ hash: string }>("PUT", `/api/workspaces/${slug}/cuts`, body as unknown as Record<string, unknown>),
+    },
     thumbUrl: (slug: string, name: string) => `/api/workspaces/${slug}/thumbs/${name}`,
   },
   batch: {
