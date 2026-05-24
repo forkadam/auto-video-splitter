@@ -1,12 +1,12 @@
 # vsplit — Session Handoff
 
-> **Status: v0.2.1 — dashboard polished.** CLI v1, dashboard MVP, and dashboard polish all shipped. Tag `v0.2.1` at HEAD.
+> **Status: v0.3.0 — cuts editor.** CLI v1, dashboard MVP, dashboard polish, and the inline cuts editor are all shipped. Tag `v0.3.0` at HEAD.
 
 **Repo:** `D:\workspace\auto-video-spliter` (Windows)
 **Branch:** `master` · **Remote:** none configured
-**Tags:** `v0.1.0` (CLI v1), `v0.2.0` (CLI + dashboard MVP), `v0.2.1` (dashboard polish)
-**Last commit:** `e6553dc` — `release: vsplit v0.2.1`
-**Date of v0.2.1:** 2026-05-24
+**Tags:** `v0.1.0` (CLI v1), `v0.2.0` (CLI + dashboard MVP), `v0.2.1` (dashboard polish), `v0.3.0` (cuts editor)
+**Last commit:** `295e0ca` — `release: vsplit v0.3.0`
+**Date of v0.3.0:** 2026-05-25
 
 ---
 
@@ -19,7 +19,7 @@ Python CLI that scans a folder of personal video clips, detects scene boundaries
 7 stages: `probe → detect → preview → review → plan → split → verify`.
 8 CLI commands: `scan, run, status, approve, reset, clean, one, dashboard`.
 
-### vsplit dashboard (v0.2.x)
+### vsplit dashboard (v0.2.x – v0.3.x)
 
 Localhost FastAPI server + React/Vite/Tailwind v4/shadcn frontend. Launched via `vsplit dashboard`. Localhost-only (127.0.0.1), no auth, single-user.
 
@@ -27,13 +27,16 @@ Features:
 - Workspace list (hybrid collapsible rows) with per-stage status pips.
 - **Per-scene thumbnails** in collapsed rows (first frame) and expanded scene strips (all frames).
 - **Hover any thumbnail** to peek a 480px-wide zoom preview (shadcn HoverCard).
-- Per-row actions: Run / Reset / Clean / Approve / Open preview ↗.
+- Per-row actions: Run / Reset / Clean / Open preview ↗.
 - **"Open preview" now actually works** — server-side `webbrowser.open()` opens the file:// URI in the OS default browser (bypasses the http→file:// click block).
 - Bulk selection + filter bar (status / stage / slug glob — same grammar as the CLI).
 - Failed-stage log drawer (click a red pip).
 - Config drawer: structured form for common fields + collapsible raw-YAML pane, validated server-side via Pydantic.
 - Live status updates via Server-Sent Events; both in-process action callbacks and a manifest-mtime watcher thread feed the broker.
 - **Modern dark theme** (OKLCH colors, indigo primary, layered surfaces, subtle ambient gradient).
+- **Inline `cuts.json` editor** in a drawer — per-scene `keep` / `label` / `merge_with_next`, with thumbnails. Save persists; Save & continue does PUT → approve → run.
+- **Next-action pill** on the collapsed row — color-coded by urgency, clickable as a shortcut to the most likely next action (`Run: <stage> →`, `Review & approve →`, `Retry: <stage> →`, `Running: <stage>…`, `Done`).
+- Standalone Approve button removed from the row (Save & continue replaces it). Batch Approve remains in `BatchActionBar`.
 
 ## Where things live
 
@@ -144,18 +147,23 @@ Across all three releases. The fixes themselves are in the code; the *root cause
 - **Browsers block click navigation from http:// to file://** without an error. The "Open preview" link looked clickable but did nothing. Fix: backend `POST /api/workspaces/{slug}/open-preview` calls Python `webbrowser.open(file_uri)`, which talks to the OS shell handler — bypasses the browser link restriction.
 - shadcn CLI keeps creating components under a literal `@/` directory (path alias not resolved during install). Manual move needed after every `shadcn add`.
 
-## Future work (post-v0.2.1)
+**v0.3.0 (cuts editor):**
+- **iPhone MOV split failed with ffmpeg EINVAL (-22).** Root cause: iPhone MOVs carry two `mebx` Core Media Metadata data streams that MP4 cannot hold; `-map 0 -c copy` tried to copy them and ffmpeg aborted. Fix: `-map 0 -map -0:d` drops all data streams.
+- **Dashboard Ctrl+C hung indefinitely.** Browser's SSE keep-alive prevented uvicorn's graceful shutdown. Fix: `timeout_graceful_shutdown=5` so straggling connections are force-closed after 5s.
+- **`Pydantic ValidationError.ctx` holds live `ValueError`s from field validators**, which FastAPI's JSON encoder can't serialize. Both `get_cuts` and `put_cuts` use `e.errors(include_context=False)` to strip the offending `ctx`.
+- **Radix Drawer auto-closes on outside-click before our `window.confirm` returns.** Solution: controlled `forceOpen` state, re-asserted via `requestAnimationFrame` on confirm-abort.
+
+## Future work (post-v0.3.0)
 
 In priority order. Highest-value items first.
 
-1. **Inline `cuts.json` editor in the dashboard.** Biggest single UX win — per-scene `keep`/`drop` toggles + label + `merge_with_next`, with the existing thumbnails inline. Probably the v0.3 headline feature.
-2. **Subprocess timeouts** on ffmpeg/ffprobe with `cancel_event` polling between calls.
-3. **Hatchling dynamic version** to kill the `pyproject.toml` / `__init__.py` duplication.
-4. **`ReviewStage.recover()` override** to preserve `cuts.json` if a crash hits mid-review-edit.
-5. **Address deferred validators/coverage** in `project_deferred_tech_debt.md`.
-6. **Performance:** Batch `preview` thumbnails via ffmpeg select filter (one process per scene instead of N).
-7. **`.gitattributes`** to lock LF endings for repo files.
-8. **Frontend tests** (Vitest or Playwright) — currently zero frontend test coverage.
+1. **Subprocess timeouts** on ffmpeg/ffprobe with `cancel_event` polling between calls.
+2. **Hatchling dynamic version** to kill the `pyproject.toml` / `__init__.py` duplication.
+3. **`ReviewStage.recover()` override** to preserve `cuts.json` if a crash hits mid-review-edit.
+4. **Address deferred validators/coverage** in `project_deferred_tech_debt.md`.
+5. **Performance:** Batch `preview` thumbnails via ffmpeg select filter (one process per scene instead of N).
+6. **`.gitattributes`** to lock LF endings for repo files.
+7. **Frontend tests** (Vitest or Playwright) — currently zero frontend test coverage.
 
 ## How to pick this up later
 
@@ -163,7 +171,7 @@ In priority order. Highest-value items first.
 git log --oneline                # 80+ commits
 git tag                          # v0.1.0, v0.2.0, v0.2.1
 git status                       # untracked: .claude/, .superpowers/, pre-redesign docs
-uv run pytest -q                 # should be 140 passed
+uv run pytest -q                 # should be 152 passed
 uv run vsplit --help             # 8 commands listed
 uv run vsplit -w some-folder dashboard --no-open  # boots on :8765
 curl http://127.0.0.1:8765/api/health             # {"ok":true}
