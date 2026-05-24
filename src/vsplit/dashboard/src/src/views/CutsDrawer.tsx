@@ -23,6 +23,7 @@ export function CutsDrawer({ slug, onClose }: Props) {
   const [draft, setDraft] = useState<CutsBody | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [forceOpen, setForceOpen] = useState(false)
 
   useEffect(() => {
     if (!slug) {
@@ -31,14 +32,24 @@ export function CutsDrawer({ slug, onClose }: Props) {
       setError(null)
       return
     }
+    let cancelled = false
     api.workspaces.cuts.get(slug)
       .then((r) => {
+        if (cancelled) return
         setLoaded({ cuts: r.cuts, hash: r.hash, thumbs: r.scene_thumbs })
         setDraft(structuredClone(r.cuts))
         setError(null)
       })
-      .catch((e) => setError(String(e.message ?? e)))
+      .catch((e) => {
+        if (cancelled) return
+        setError(String(e.message ?? e))
+      })
+    return () => { cancelled = true }
   }, [slug])
+
+  // Mirror slug presence into a local open flag so the confirm-cancel flow
+  // can re-assert open=true if the user aborts the discard prompt.
+  useEffect(() => { setForceOpen(slug !== null) }, [slug])
 
   const isDirty = useMemo(() => {
     if (!loaded || !draft) return false
@@ -56,6 +67,7 @@ export function CutsDrawer({ slug, onClose }: Props) {
 
   const cancel = () => {
     if (isDirty && !window.confirm("Discard unsaved changes?")) return
+    setForceOpen(false)
     onClose()
   }
 
@@ -79,7 +91,20 @@ export function CutsDrawer({ slug, onClose }: Props) {
   }
 
   return (
-    <Drawer open={!!slug} onOpenChange={(o) => !o && cancel()}>
+    <Drawer
+      open={forceOpen}
+      onOpenChange={(o) => {
+        if (o) return
+        if (isDirty && !window.confirm("Discard unsaved changes?")) {
+          // User aborted the close: Radix has already flipped its internal
+          // open=false, so re-assert open=true on the next paint to override.
+          requestAnimationFrame(() => setForceOpen(true))
+          return
+        }
+        setForceOpen(false)
+        onClose()
+      }}
+    >
       <DrawerContent>
         <DrawerHeader>
           <DrawerTitle>{slug} · review cuts.json</DrawerTitle>
@@ -102,11 +127,11 @@ export function CutsDrawer({ slug, onClose }: Props) {
                   <img
                     src={api.workspaces.thumbUrl(slug!, thumb)}
                     alt=""
-                    className="w-32 h-18 rounded object-cover bg-muted ring-1 ring-border flex-shrink-0"
+                    className="w-32 h-[4.5rem] rounded object-cover bg-muted ring-1 ring-border flex-shrink-0"
                     loading="lazy"
                   />
                 ) : (
-                  <div className="w-32 h-18 rounded bg-muted ring-1 ring-border flex-shrink-0" />
+                  <div className="w-32 h-[4.5rem] rounded bg-muted ring-1 ring-border flex-shrink-0" />
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="font-mono text-xs text-muted-foreground">
