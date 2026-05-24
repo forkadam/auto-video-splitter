@@ -90,3 +90,12 @@ def test_get_cuts_scene_thumbs_first_match(tmp_path: Path) -> None:
     client = TestClient(create_app(tmp_path))
     body = client.get("/api/workspaces/alpha/cuts").json()
     assert body["scene_thumbs"] == {"1": "scene-001-00.jpg", "2": "scene-002-00.jpg"}
+
+
+def test_get_cuts_422_when_file_malformed(tmp_path: Path) -> None:
+    ws = _seed(tmp_path, "alpha")
+    (ws / "decisions").mkdir(parents=True, exist_ok=True)
+    (ws / "decisions" / "cuts.json").write_text("not valid json {{{")
+    client = TestClient(create_app(tmp_path))
+    r = client.get("/api/workspaces/alpha/cuts")
+    assert r.status_code == 422

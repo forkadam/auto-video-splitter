@@ -4,6 +4,7 @@ import webbrowser
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
+from pydantic import ValidationError
 
 from vsplit.core.hash import content_hash
 from vsplit.core.index import load_index
@@ -115,7 +116,10 @@ def get_cuts(slug: str, request: Request) -> dict:
     if not cuts_path.is_file():
         raise HTTPException(status_code=404, detail="cuts.json not yet written")
     raw = cuts_path.read_text()
-    parsed = CutsJson.model_validate_json(raw)
+    try:
+        parsed = CutsJson.model_validate_json(raw)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.errors()) from e
     scene_ids = [s.id for s in parsed.scenes]
     return {
         "cuts": json.loads(raw),
