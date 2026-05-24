@@ -1,0 +1,152 @@
+import { useEffect, useMemo, useState } from "react"
+import {
+  Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter,
+} from "@/components/ui/drawer"
+import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
+import { api, type CutsBody } from "@/lib/api"
+
+type Props = {
+  slug: string | null
+  onClose: () => void
+}
+
+type Loaded = {
+  cuts: CutsBody
+  hash: string
+  thumbs: Record<string, string>
+}
+
+export function CutsDrawer({ slug, onClose }: Props) {
+  const [loaded, setLoaded] = useState<Loaded | null>(null)
+  const [draft, setDraft] = useState<CutsBody | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    if (!slug) {
+      setLoaded(null)
+      setDraft(null)
+      setError(null)
+      return
+    }
+    api.workspaces.cuts.get(slug)
+      .then((r) => {
+        setLoaded({ cuts: r.cuts, hash: r.hash, thumbs: r.scene_thumbs })
+        setDraft(structuredClone(r.cuts))
+        setError(null)
+      })
+      .catch((e) => setError(String(e.message ?? e)))
+  }, [slug])
+
+  const isDirty = useMemo(() => {
+    if (!loaded || !draft) return false
+    return JSON.stringify(loaded.cuts) !== JSON.stringify(draft)
+  }, [loaded, draft])
+
+  const update = (idx: number, patch: Partial<CutsBody["scenes"][number]>) => {
+    setDraft((d) => {
+      if (!d) return d
+      const next = structuredClone(d)
+      next.scenes[idx] = { ...next.scenes[idx], ...patch }
+      return next
+    })
+  }
+
+  const cancel = () => {
+    if (isDirty && !window.confirm("Discard unsaved changes?")) return
+    onClose()
+  }
+
+  const save = async (): Promise<boolean> => {
+    if (!slug || !loaded || !draft) return false
+    setBusy(true)
+    setError(null)
+    try {
+      const r = await api.workspaces.cuts.put(slug, {
+        cuts: draft, expected_hash: loaded.hash,
+      })
+      setLoaded({ cuts: structuredClone(draft), hash: r.hash, thumbs: loaded.thumbs })
+      return true
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setError(msg)
+      return false
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Drawer open={!!slug} onOpenChange={(o) => !o && cancel()}>
+      <DrawerContent>
+        <DrawerHeader>
+          <DrawerTitle>{slug} · review cuts.json</DrawerTitle>
+        </DrawerHeader>
+
+        {error && (
+          <div className="mx-4 mb-2 px-3 py-2 text-sm rounded-md bg-red-500/10 border border-red-500/30 text-red-400">
+            {error}
+          </div>
+        )}
+
+        <div className="px-4 pb-4 overflow-auto max-h-[60vh] space-y-2">
+          {!loaded && !error && <div className="text-muted-foreground text-sm">Loading…</div>}
+          {loaded && draft && draft.scenes.map((s, i) => {
+            const thumb = loaded.thumbs[String(s.id)]
+            const isLast = i === draft.scenes.length - 1
+            return (
+              <div key={s.id} className="flex gap-3 p-2 rounded-md border border-border bg-card">
+                {thumb ? (
+                  <img
+                    src={api.workspaces.thumbUrl(slug!, thumb)}
+                    alt=""
+                    className="w-32 h-18 rounded object-cover bg-muted ring-1 ring-border flex-shrink-0"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="w-32 h-18 rounded bg-muted ring-1 ring-border flex-shrink-0" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="font-mono text-xs text-muted-foreground">
+                    #{s.id.toString().padStart(3, "0")}  ·  {s.start} – {s.end}
+                  </div>
+                  <div className="mt-1.5 flex items-center gap-3 flex-wrap">
+                    <label className="flex items-center gap-1.5 text-sm">
+                      <Checkbox checked={s.keep}
+                                onCheckedChange={(c) => update(i, { keep: !!c })} />
+                      keep
+                    </label>
+                    <label className="flex items-center gap-1.5 text-sm">
+                      <Checkbox
+                        checked={s.merge_with_next}
+                        disabled={isLast}
+                        onCheckedChange={(c) => update(i, { merge_with_next: !!c })}
+                      />
+                      merge with next
+                    </label>
+                    <Input
+                      placeholder="label (optional)"
+                      value={s.label ?? ""}
+                      onChange={(e) => update(i, { label: e.target.value || null })}
+                      className="h-7 w-48 text-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        <DrawerFooter className="flex-row justify-end gap-2">
+          <Button variant="ghost" onClick={cancel} disabled={busy}>Cancel</Button>
+          <Button variant="secondary" onClick={save} disabled={busy || !isDirty}>
+            Save
+          </Button>
+          {/* Save & continue lives here too — added in Task 5 */}
+        </DrawerFooter>
+      </DrawerContent>
+    </Drawer>
+  )
+}
