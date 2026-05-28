@@ -17,10 +17,34 @@ const STAGES = ["probe", "detect", "preview", "review", "plan", "split", "verify
 
 function matchesFilter(ws: Workspace, f: FilterState): boolean {
   if (f.status !== "any") {
-    if (!Object.values(ws.stages).includes(f.status)) return false
+    // "done" means the workspace is fully complete — every stage. Using the
+    // any-stage-matches rule here would match almost every workspace because
+    // probe=done lands within seconds.
+    if (f.status === "done") {
+      if (!ws.all_done) return false
+    } else if (f.status === "no_scenes") {
+      // Synthetic status: the detector reported 0 scenes. Matches workspaces
+      // wearing the orange "No scenes" NextPill, and also done/skipped
+      // zero-scene workspaces in case the user is auditing them after the fact.
+      if (ws.scenes_found !== 0) return false
+    } else if (f.status === "awaiting_user") {
+      // Mutually exclusive with "no_scenes" — the orange "No scenes" pill is
+      // technically also a review/awaiting state on disk, but UX-wise it's a
+      // different category so we strip it from this bucket.
+      if (ws.scenes_found === 0) return false
+      if (!Object.values(ws.stages).includes("awaiting_user")) return false
+    } else if (!Object.values(ws.stages).includes(f.status)) {
+      return false
+    }
   }
   if (f.stage !== "any") {
-    const next = STAGES.find((s) => ws.stages[s] !== "done")
+    // A "skipped" stage was intentionally bypassed; treat it as complete when
+    // computing the workspace's current stage, otherwise the filter would
+    // route every workspace with a skipped stage back to it. Matches the
+    // logic in nextAction.ts so this filter agrees with the NextPill.
+    const next = STAGES.find(
+      (s) => ws.stages[s] !== "done" && ws.stages[s] !== "skipped",
+    )
     if (next !== f.stage) return false
   }
   if (f.slug) {
@@ -87,8 +111,22 @@ export default function App() {
       <header className="sticky top-0 z-20 backdrop-blur-md bg-background/80 border-b border-border px-6 py-3.5 flex items-center gap-4 flex-shrink-0">
         <Logo className="size-7 rounded-md shadow-lg shadow-primary/20" />
         <h1 className="text-base font-semibold tracking-tight">vsplit dashboard</h1>
-        <div className="text-sm text-muted-foreground">
-          {visible.length} of {workspaces.length} workspace{workspaces.length === 1 ? "" : "s"}
+        <div className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium">
+          {visible.length === workspaces.length ? (
+            <>
+              <span className="tabular-nums text-emerald-300">{workspaces.length}</span>
+              <span className="text-emerald-500/80">
+                workspace{workspaces.length === 1 ? "" : "s"}
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="tabular-nums text-emerald-300">{visible.length}</span>
+              <span className="text-emerald-500/80">of</span>
+              <span className="tabular-nums text-emerald-300">{workspaces.length}</span>
+              <span className="text-emerald-500/80">shown</span>
+            </>
+          )}
         </div>
         <Button
           variant="ghost"

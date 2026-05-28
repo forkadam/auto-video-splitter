@@ -47,6 +47,8 @@ export type Workspace = {
   any_awaiting: boolean
   all_done: boolean
   first_thumb: string | null
+  /** Number of scenes the detector found. `null` if detect hasn't run yet. */
+  scenes_found: number | null
 }
 
 export const api = {

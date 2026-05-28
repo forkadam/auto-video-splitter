@@ -58,6 +58,16 @@ def _scene_thumbs(root: Path, slug: str, scene_ids: list[int]) -> dict[str, str]
 def _summary(root: Path, slug: str, m) -> dict:
     statuses = [b.status for b in m.stages.values()]
     thumbs = _list_thumbs(root, slug)
+    detect = m.stages.get("detect")
+    # Expose the detector's scene count so the dashboard can distinguish
+    # "zero scenes detected — dead end" from "scenes ready for review".
+    # Stays None until detect completes so the frontend can render "unknown"
+    # instead of misleadingly showing 0.
+    scenes_found = (
+        detect.artifacts.get("scenes_found")
+        if detect is not None and detect.status == "done"
+        else None
+    )
     return {
         "slug": slug,
         "source": m.source.relative_path,
@@ -66,6 +76,7 @@ def _summary(root: Path, slug: str, m) -> dict:
         "any_awaiting": "awaiting_user" in statuses,
         "all_done": all(s == "done" for s in statuses),
         "first_thumb": thumbs[0] if thumbs else None,
+        "scenes_found": scenes_found,
     }
 
 

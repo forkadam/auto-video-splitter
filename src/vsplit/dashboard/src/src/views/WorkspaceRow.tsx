@@ -42,7 +42,13 @@ type Detail = {
   }
 }
 
-function NextPill({ ws, onOpenCuts }: { ws: Workspace; onOpenCuts: (s: string) => void }) {
+function NextPill({
+  ws, onOpenCuts, onOpenPreview,
+}: {
+  ws: Workspace
+  onOpenCuts: (s: string) => void
+  onOpenPreview: (s: string) => void
+}) {
   const a = nextAction(ws)
   const base = "px-2.5 py-1 rounded-md text-xs font-medium flex items-center gap-1.5"
   if (a.kind === "done") {
@@ -62,14 +68,19 @@ function NextPill({ ws, onOpenCuts }: { ws: Workspace; onOpenCuts: (s: string) =
   const onClick = () => {
     if (a.kind === "retry") return void api.workspaces.run(ws.slug, { only: a.stage })
     if (a.kind === "review") return onOpenCuts(ws.slug)
+    if (a.kind === "empty") return onOpenPreview(ws.slug)
     if (a.kind === "run") return void api.workspaces.run(ws.slug, {})
   }
   const tone =
     a.kind === "retry" ? "bg-red-500/15 text-red-300 hover:bg-red-500/25" :
     a.kind === "review" ? "bg-amber-500/15 text-amber-300 hover:bg-amber-500/25" :
+    a.kind === "empty" ? "bg-orange-500/20 text-orange-300 hover:bg-orange-500/30 ring-1 ring-inset ring-orange-500/30" :
     "bg-primary/15 text-primary hover:bg-primary/25"
   return (
     <button type="button" onClick={onClick}
+            title={a.kind === "empty"
+              ? "Detector found 0 scenes — click to open the preview and decide whether to lower the threshold + reset, or clean this workspace"
+              : undefined}
             className={cn(base, "cursor-pointer transition-colors", tone)}>
       {a.label}
     </button>
@@ -113,7 +124,7 @@ export function WorkspaceRow({
           )}
           <div className="font-medium text-sm min-w-0 truncate">{ws.slug}</div>
         </button>
-        <NextPill ws={ws} onOpenCuts={onOpenCuts} />
+        <NextPill ws={ws} onOpenCuts={onOpenCuts} onOpenPreview={onOpenPreview} />
         <Checkbox
           checked={selected}
           onCheckedChange={(c) => onSelectChange(ws.slug, !!c)}

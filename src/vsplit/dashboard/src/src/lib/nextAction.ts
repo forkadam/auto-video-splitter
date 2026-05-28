@@ -7,6 +7,7 @@ export type NextAction =
   | { kind: "retry"; label: string; stage: string }
   | { kind: "running"; label: string; stage: string }
   | { kind: "review"; label: "Review & approve →" }
+  | { kind: "empty"; label: "No scenes" }
   | { kind: "run"; label: string; stage: string }
   | { kind: "idle"; label: "Idle" }
 
@@ -23,6 +24,13 @@ export function nextAction(ws: Workspace): NextAction {
     if (ws.stages[s] === "running") {
       return { kind: "running", label: `Running: ${s}…`, stage: s }
     }
+  }
+
+  // Detector found nothing — approving review would produce zero clips.
+  // Flag distinctly from a real "Review & approve" so the user can spot
+  // the dead end and decide to lower the threshold + reset, or just clean.
+  if (ws.stages.review === "awaiting_user" && ws.scenes_found === 0) {
+    return { kind: "empty", label: "No scenes" }
   }
 
   if (ws.stages.review === "awaiting_user") {

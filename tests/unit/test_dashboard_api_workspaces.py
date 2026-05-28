@@ -104,6 +104,34 @@ def test_workspace_no_thumbs_when_preview_dir_missing(tmp_path: Path) -> None:
     assert client.get("/api/workspaces/alpha").json()["thumb_names"] == []
 
 
+def test_workspace_summary_exposes_scenes_found(tmp_path: Path) -> None:
+    """Dashboard needs to distinguish 'detector found scenes' from 'detector
+    found zero scenes' to give zero-scene workspaces a distinct NextPill
+    instead of the misleading 'Review & approve' label."""
+    from vsplit.core.manifest import load_manifest, save_manifest
+    _seed(tmp_path, "with-scenes")
+    m = load_manifest(workspace_dir(tmp_path, "with-scenes"))
+    m.stages["detect"].status = "done"
+    m.stages["detect"].artifacts["scenes_found"] = 7
+    save_manifest(workspace_dir(tmp_path, "with-scenes"), m)
+
+    _seed(tmp_path, "empty")
+    m = load_manifest(workspace_dir(tmp_path, "empty"))
+    m.stages["detect"].status = "done"
+    m.stages["detect"].artifacts["scenes_found"] = 0
+    save_manifest(workspace_dir(tmp_path, "empty"), m)
+
+    _seed(tmp_path, "predetect")  # detect not yet done
+
+    client = TestClient(create_app(tmp_path))
+    by_slug = {w["slug"]: w for w in client.get("/api/workspaces").json()["workspaces"]}
+    assert by_slug["with-scenes"]["scenes_found"] == 7
+    assert by_slug["empty"]["scenes_found"] == 0
+    # Detect not done yet → null so the frontend can render "unknown" rather
+    # than pretending detection found zero.
+    assert by_slug["predetect"]["scenes_found"] is None
+
+
 def test_open_preview_invokes_webbrowser(tmp_path: Path, monkeypatch) -> None:
     _seed(tmp_path, "alpha")
     preview = workspace_dir(tmp_path, "alpha") / "preview"
