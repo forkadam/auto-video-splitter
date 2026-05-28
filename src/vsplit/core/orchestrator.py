@@ -4,11 +4,11 @@ from concurrent.futures import ThreadPoolExecutor, Future, wait, FIRST_COMPLETED
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
-from vsplit.core.manifest import load_manifest
+from vsplit.core.manifest import load_manifest, save_manifest
 from vsplit.core.pipeline import run_stage
 from vsplit.core.types import Stage
 from vsplit.schemas.config import Config
-from vsplit.schemas.manifest import STAGE_NAMES
+from vsplit.schemas.manifest import STAGE_NAMES, StageError
 
 
 @dataclass(frozen=True)
@@ -16,6 +16,30 @@ class Workspace:
     slug: str
     workspace_dir: Path
     source_path: Path
+
+
+def _force_fail_if_stuck(workspace_dir: Path, stage_name: str) -> None:
+    """If the named stage is still 'running' after its worker future has settled,
+    the worker crashed without recording a terminal status. Re-stamp 'failed' so
+    `_next_runnable` can advance past it on subsequent dispatch ticks."""
+    try:
+        m = load_manifest(workspace_dir)
+    except Exception:
+        return
+    block = m.stages.get(stage_name)
+    if block is None or block.status != "running":
+        return
+    block.status = "failed"
+    block.error = StageError(
+        message="worker exited without recording stage outcome",
+    )
+    try:
+        save_manifest(workspace_dir, m)
+    except Exception:
+        # If save_manifest itself is broken we can't do anything more here;
+        # at least the in-memory orchestrator state has been corrected and
+        # the next dispatch() call's _recover_running() will retry.
+        pass
 
 
 def _next_runnable(manifest, stages_to_run: list[str]) -> str | None:
@@ -82,6 +106,8 @@ def dispatch(
     inflight: dict[str, tuple[Future, str]] = {}
     max_workers = max(config.concurrency.get(s, 1) for s in stages_to_run) or 1
 
+    ws_by_slug = {ws.slug: ws for ws in workspaces}
+
     with ThreadPoolExecutor(max_workers=max_workers * len(stages_to_run)) as ex:
         while not cancel_event.is_set():
             # Reap
@@ -91,7 +117,13 @@ def dispatch(
                     try:
                         fut.result()
                     except Exception:
-                        pass    # error already in manifest
+                        pass    # ideally error already in manifest
+                    # Defense-in-depth: if run_stage exited without writing a
+                    # terminal status (e.g. save_manifest raised after stage.run
+                    # returned), the stage stays "running" on disk and
+                    # _next_runnable short-circuits forever. Force-fail so the
+                    # workspace can be reset/resumed instead of hanging.
+                    _force_fail_if_stuck(ws_by_slug[slug].workspace_dir, stage_name)
                     limiters[stage_name].release()
                     done_slugs.append(slug)
             for s in done_slugs:

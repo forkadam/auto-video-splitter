@@ -2,8 +2,29 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
+
+# On Windows, os.replace can transiently raise PermissionError if the destination
+# is briefly held open by a concurrent reader (the dashboard watcher polls
+# manifest.json every 0.5s). Retry with exponential backoff so legitimate writes
+# don't surface as "stage stuck running" bugs upstream.
+_REPLACE_RETRY_INITIAL = 0.05
+_REPLACE_RETRY_MAX = 6
+
+
+def _replace_with_retry(src: str, dst: Path) -> None:
+    delay = _REPLACE_RETRY_INITIAL
+    for attempt in range(_REPLACE_RETRY_MAX):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if attempt == _REPLACE_RETRY_MAX - 1:
+                raise
+            time.sleep(delay)
+            delay *= 2
 
 
 def atomic_write_text(path: Path, content: str, *, encoding: str = "utf-8") -> None:
@@ -13,7 +34,7 @@ def atomic_write_text(path: Path, content: str, *, encoding: str = "utf-8") -> N
     try:
         with os.fdopen(fd, "w", encoding=encoding, newline="\n") as f:
             f.write(content)
-        os.replace(tmp, path)
+        _replace_with_retry(tmp, path)
     except BaseException:  # includes KeyboardInterrupt / SystemExit
         try:
             os.unlink(tmp)
