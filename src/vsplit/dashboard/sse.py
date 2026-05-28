@@ -8,6 +8,12 @@ import asyncio
 from typing import AsyncIterator
 
 
+# Sentinel value the broker can inject into a subscriber's queue to make
+# its blocking get() return immediately. Used by close_all() to wake up
+# every SSE stream on server shutdown.
+_SHUTDOWN_SENTINEL: dict = {"__sse_shutdown__": True}
+
+
 class _QueueSubscriber:
     """Async iterator backed by a Queue.
 
@@ -71,3 +77,22 @@ class EventBroker:
         __anext__ call are not captured.
         """
         return _QueueSubscriber(self._subscribers)
+
+    def close_all(self) -> None:
+        """Inject the shutdown sentinel into every subscriber's queue so any
+        blocked ``await queue.get()`` returns immediately. Lets SSE streams
+        observe shutdown without racing a second awaitable (the simpler
+        single-await flow is much harder to leak under cancellation)."""
+        for q in list(self._subscribers):
+            # Drop the oldest pending event if the queue is full so the
+            # sentinel always lands — shutdown takes priority over throughput.
+            while True:
+                try:
+                    q.put_nowait(_SHUTDOWN_SENTINEL)
+                    break
+                except asyncio.QueueFull:
+                    try:
+                        q.get_nowait()
+                    except asyncio.QueueEmpty:
+                        # Concurrent consumer drained it; loop will retry put.
+                        continue
