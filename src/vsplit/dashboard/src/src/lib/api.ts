@@ -82,6 +82,18 @@ export const api = {
       jsonRequest<{ cleaned: number }>("POST", "/api/batch/clean", body),
     approve: (body: { slugs: string[] }) =>
       jsonRequest<{ approved: number }>("POST", "/api/batch/approve", body),
+    collect: (body: { slugs?: string[]; dest?: string; mode?: string; force?: boolean; dry_run?: boolean } = {}) =>
+      jsonRequest<{
+        collected: number
+        from_workspaces: number
+        skipped_not_done: number
+        skipped_no_output: number
+        skipped_existing: number
+        destination: string
+        mode: string
+        dry_run: boolean
+        files: string[]
+      }>("POST", "/api/batch/collect", body),
   },
   config: {
     get: () => jsonRequest<Record<string, unknown>>("GET", "/api/config"),

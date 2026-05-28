@@ -58,6 +58,17 @@ class ScanConfig(BaseModel):
     recursive: bool = False
 
 
+class CollectConfig(BaseModel):
+    """Defaults for `vsplit collect` and the dashboard's Collect outputs action.
+
+    ``destination`` is a path; if it's relative it's resolved against the
+    working root at call time (so ``./collected`` is portable across machines).
+    """
+    model_config = ConfigDict(extra="forbid")
+    destination: str = "collected"
+    mode: Literal["copy", "move", "link"] = "copy"
+
+
 _VALID_CONCURRENCY_STAGES = frozenset({"probe", "detect", "preview", "plan", "split", "verify"})
 # Note: "review" is excluded — review runs synchronously, no concurrency.
 
@@ -77,6 +88,7 @@ class Config(BaseModel):
         }
     )
     scan: ScanConfig = Field(default_factory=ScanConfig)
+    collect: CollectConfig = Field(default_factory=CollectConfig)
 
     @field_validator("concurrency")
     @classmethod

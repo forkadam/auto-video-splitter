@@ -1,9 +1,12 @@
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { api } from "@/lib/api"
+import { ResetStageDialog } from "./ResetStageDialog"
 
 export function BatchActionBar({
   selected, onCleared,
 }: { selected: Set<string>; onCleared: () => void }) {
+  const [resetOpen, setResetOpen] = useState(false)
   if (selected.size === 0) return null
   const slugs = Array.from(selected)
   return (
@@ -14,15 +17,18 @@ export function BatchActionBar({
       <div className="flex-1" />
       <Button size="sm" onClick={() => api.batch.run({ slugs }).then(onCleared)}>Run</Button>
       <Button size="sm" variant="secondary" onClick={() => api.batch.approve({ slugs }).then(onCleared)}>Approve</Button>
-      <Button size="sm" variant="outline" onClick={() => {
-        const stage = window.prompt("Reset from which stage?", "detect")
-        if (stage) api.batch.reset({ slugs, from: stage }).then(onCleared)
-      }}>Reset…</Button>
+      <Button size="sm" variant="outline" onClick={() => setResetOpen(true)}>Reset…</Button>
       <Button size="sm" variant="destructive" onClick={() => {
         if (window.confirm(`Delete ${selected.size} workspaces?`))
           api.batch.clean({ slugs }).then(onCleared)
       }}>Clean</Button>
       <Button size="sm" variant="ghost" onClick={onCleared}>Cancel</Button>
+      <ResetStageDialog
+        open={resetOpen}
+        onOpenChange={setResetOpen}
+        target={`${selected.size} workspace${selected.size === 1 ? "" : "s"}`}
+        onConfirm={(stage) => { void api.batch.reset({ slugs, from: stage }).then(onCleared) }}
+      />
     </div>
   )
 }

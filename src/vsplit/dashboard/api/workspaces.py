@@ -99,6 +99,27 @@ def get_workspace(slug: str, request: Request) -> dict:
     }
 
 
+@router.get("/{slug}/preview/{path:path}")
+def serve_preview_file(slug: str, path: str, request: Request):
+    """Serve files from a workspace's preview/ directory over HTTP.
+
+    Lets the dashboard embed the rendered preview index.html in an iframe
+    alongside the workspace list (instead of opening a separate file:// window).
+    Relative URLs inside index.html (images/*, source-proxy.mp4) resolve to
+    the same route via the wildcard path segment.
+    """
+    root: Path = request.app.state.working_root
+    _require_slug(root, slug)
+    base = (workspace_dir(root, slug) / "preview").resolve()
+    target = (base / path).resolve()
+    # Path-traversal guard: target must remain inside the preview dir.
+    if base != target and base not in target.parents:
+        raise HTTPException(status_code=400, detail="invalid path")
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="preview file not found")
+    return FileResponse(target)
+
+
 @router.post("/{slug}/open-preview")
 def open_preview(slug: str, request: Request) -> dict:
     """Open this workspace's preview HTML in the OS default browser.

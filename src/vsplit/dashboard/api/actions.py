@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from vsplit.core.actions import (
     approve_workspaces, clean_workspaces, reset_workspaces, run_workspaces,
 )
+from vsplit.core.collect import collect_outputs
 from vsplit.core.config import load_resolved_config
 from vsplit.core.index import load_index
 from vsplit.schemas.manifest import STAGE_NAMES
@@ -125,6 +126,48 @@ async def batch_reset(body: BatchReset, request: Request) -> dict:
         raise HTTPException(status_code=422, detail=f"unknown stage: {body.from_!r}")
     await run_in_threadpool(reset_workspaces, root, body.slugs, from_=body.from_)
     return {"ok": True}
+
+
+class CollectBody(BaseModel):
+    slugs: list[str] | None = None
+    dest: str | None = None
+    mode: str | None = None
+    force: bool = False
+    dry_run: bool = False
+
+
+@batch_router.post("/collect")
+async def batch_collect(body: CollectBody, request: Request) -> dict:
+    """Gather every split=done workspace's output clips into one folder.
+
+    With no slugs, collects from every workspace whose split stage is done.
+    dest defaults to config.collect.destination (relative paths resolve under
+    the working root). mode defaults to config.collect.mode.
+    """
+    root: Path = request.app.state.working_root
+    cfg = load_resolved_config(working_root=root, explicit_path=None)
+    if body.dest is None:
+        configured = Path(cfg.collect.destination)
+        dest_path = configured if configured.is_absolute() else (root / configured)
+    else:
+        dest_path = Path(body.dest)
+    mode = body.mode or cfg.collect.mode
+    if mode not in ("copy", "move", "link"):
+        raise HTTPException(status_code=422, detail=f"unknown mode: {mode!r}")
+
+    result = await run_in_threadpool(
+        collect_outputs, root,
+        slugs=body.slugs,
+        dest=dest_path,
+        mode=mode,  # type: ignore[arg-type]
+        force=body.force,
+        dry_run=body.dry_run,
+    )
+    # Include the resolved destination so the dashboard can show it.
+    result["destination"] = str(dest_path)
+    result["mode"] = mode
+    result["dry_run"] = body.dry_run
+    return result
 
 
 @batch_router.post("/run")

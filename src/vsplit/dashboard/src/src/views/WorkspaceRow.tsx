@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/hover-card"
 import { api, type Workspace } from "@/lib/api"
 import { nextAction } from "@/lib/nextAction"
+import { ResetStageDialog } from "./ResetStageDialog"
 
 const STAGES = ["probe", "detect", "preview", "review", "plan", "split", "verify"] as const
 
@@ -28,6 +29,8 @@ type Props = {
   onToggle: (slug: string) => void
   onOpenLog: (slug: string, stage: string) => void
   onOpenCuts: (slug: string) => void
+  onOpenPreview: (slug: string) => void
+  previewSlug: string | null
 }
 
 type Detail = {
@@ -75,8 +78,10 @@ function NextPill({ ws, onOpenCuts }: { ws: Workspace; onOpenCuts: (s: string) =
 
 export function WorkspaceRow({
   ws, selected, onSelectChange, expanded, onToggle, onOpenLog, onOpenCuts,
+  onOpenPreview, previewSlug,
 }: Props) {
   const [detail, setDetail] = useState<Detail | null>(null)
+  const [resetOpen, setResetOpen] = useState(false)
 
   useEffect(() => {
     if (!expanded) return
@@ -91,6 +96,7 @@ export function WorkspaceRow({
       "rounded-lg border bg-card text-card-foreground transition-colors",
       "hover:bg-accent/40",
       selected && "ring-2 ring-primary/60 border-primary/40",
+      previewSlug === ws.slug && "ring-2 ring-blue-400/60 border-blue-400/40",
     )}>
       <div className="w-full px-4 py-2.5 flex items-center gap-3">
         <button onClick={() => onToggle(ws.slug)} className="flex items-center gap-3 min-w-0 flex-1 text-left">
@@ -171,10 +177,7 @@ export function WorkspaceRow({
             <Button size="sm" onClick={() => api.workspaces.run(ws.slug, {})}>
               Run
             </Button>
-            <Button size="sm" variant="outline" onClick={() => {
-              const stage = window.prompt("Reset from which stage?", "detect")
-              if (stage) api.workspaces.reset(ws.slug, { from: stage })
-            }}>
+            <Button size="sm" variant="outline" onClick={() => setResetOpen(true)}>
               Reset…
             </Button>
             <Button size="sm" variant="destructive" onClick={() => {
@@ -188,14 +191,19 @@ export function WorkspaceRow({
               size="sm"
               variant="ghost"
               disabled={!previewReady}
-              onClick={() => api.workspaces.openPreview(ws.slug)
-                .catch((e) => alert(`Failed to open preview: ${e.message ?? e}`))}
+              onClick={() => onOpenPreview(ws.slug)}
             >
-              Open preview ↗
+              Open preview
             </Button>
           </div>
         </div>
       )}
+      <ResetStageDialog
+        open={resetOpen}
+        onOpenChange={setResetOpen}
+        target={ws.slug}
+        onConfirm={(stage) => { void api.workspaces.reset(ws.slug, { from: stage }) }}
+      />
     </div>
   )
 }

@@ -10,6 +10,10 @@ import { api, type CutsBody } from "@/lib/api"
 type Props = {
   slug: string | null
   onClose: () => void
+  /** When set, the drawer's portal renders inside this element instead of <body>,
+      so it stays confined to the workspace-list column and doesn't overlap the
+      preview pane on the right. */
+  container?: HTMLElement | null
 }
 
 type Loaded = {
@@ -18,7 +22,7 @@ type Loaded = {
   thumbs: Record<string, string>
 }
 
-export function CutsDrawer({ slug, onClose }: Props) {
+export function CutsDrawer({ slug, onClose, container }: Props) {
   const [loaded, setLoaded] = useState<Loaded | null>(null)
   const [draft, setDraft] = useState<CutsBody | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -55,6 +59,24 @@ export function CutsDrawer({ slug, onClose }: Props) {
     if (!loaded || !draft) return false
     return JSON.stringify(loaded.cuts) !== JSON.stringify(draft)
   }, [loaded, draft])
+
+  const keepCount = useMemo(
+    () => draft?.scenes.reduce((n, s) => n + (s.keep ? 1 : 0), 0) ?? 0,
+    [draft],
+  )
+  const keepAllState: boolean | "indeterminate" = (() => {
+    if (!draft || draft.scenes.length === 0) return false
+    if (keepCount === draft.scenes.length) return true
+    if (keepCount === 0) return false
+    return "indeterminate"
+  })()
+  const toggleKeepAll = () => setDraft((d) => {
+    if (!d) return d
+    const next = structuredClone(d)
+    const allKept = next.scenes.every((s) => s.keep)
+    for (const s of next.scenes) s.keep = !allKept
+    return next
+  })
 
   const update = (idx: number, patch: Partial<CutsBody["scenes"][number]>) => {
     setDraft((d) => {
@@ -113,6 +135,7 @@ export function CutsDrawer({ slug, onClose }: Props) {
   return (
     <Drawer
       open={forceOpen}
+      shouldScaleBackground={false}
       onOpenChange={(o) => {
         if (o) return
         if (isDirty && !window.confirm("Discard unsaved changes?")) {
@@ -125,7 +148,7 @@ export function CutsDrawer({ slug, onClose }: Props) {
         onClose()
       }}
     >
-      <DrawerContent>
+      <DrawerContent container={container ?? null}>
         <DrawerHeader>
           <DrawerTitle>{slug} · review cuts.json</DrawerTitle>
         </DrawerHeader>
@@ -136,16 +159,33 @@ export function CutsDrawer({ slug, onClose }: Props) {
           </div>
         )}
 
+        {draft && draft.scenes.length > 0 && (
+          <label className="mx-4 mb-2 flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none w-fit">
+            <Checkbox
+              checked={keepAllState}
+              onCheckedChange={toggleKeepAll}
+              aria-label="Toggle keep on all scenes"
+            />
+            <span>
+              {keepCount === 0
+                ? `Keep all (${draft.scenes.length})`
+                : keepCount === draft.scenes.length
+                ? `Keep none (${draft.scenes.length})`
+                : `${keepCount} of ${draft.scenes.length} kept`}
+            </span>
+          </label>
+        )}
+
         <div className="px-4 pb-4 overflow-auto max-h-[60vh] space-y-2">
           {!loaded && !error && <div className="text-muted-foreground text-sm">Loading…</div>}
-          {loaded && draft && draft.scenes.map((s, i) => {
+          {slug && loaded && draft && draft.scenes.map((s, i) => {
             const thumb = loaded.thumbs[String(s.id)]
             const isLast = i === draft.scenes.length - 1
             return (
               <div key={s.id} className="flex gap-3 p-2 rounded-md border border-border bg-card">
                 {thumb ? (
                   <img
-                    src={api.workspaces.thumbUrl(slug!, thumb)}
+                    src={api.workspaces.thumbUrl(slug, thumb)}
                     alt=""
                     className="w-32 h-[4.5rem] rounded object-cover bg-muted ring-1 ring-border flex-shrink-0"
                     loading="lazy"

@@ -135,3 +135,60 @@ def test_workspace_detail_rejects_path_traversal(tmp_path: Path) -> None:
     # Try to escape via slug
     r = client.get("/api/workspaces/..%2F..%2Fescape")
     assert r.status_code in (404, 400)
+
+
+def test_preview_file_serves_index_html(tmp_path: Path) -> None:
+    """Iframe-friendly: GET /api/workspaces/<slug>/preview/index.html returns the HTML."""
+    _seed(tmp_path, "alpha")
+    preview = workspace_dir(tmp_path, "alpha") / "preview"
+    preview.mkdir(parents=True)
+    (preview / "index.html").write_text("<html><body>preview</body></html>")
+    r = TestClient(create_app(tmp_path)).get("/api/workspaces/alpha/preview/index.html")
+    assert r.status_code == 200
+    assert "<body>preview</body>" in r.text
+    # Must be served as HTML so the iframe renders it, not downloads it.
+    assert r.headers["content-type"].startswith("text/html")
+
+
+def test_preview_file_serves_nested_assets(tmp_path: Path) -> None:
+    """The index.html references images/scene-XXX.jpg relative to itself — those
+    must resolve against the same route."""
+    _seed(tmp_path, "alpha")
+    preview = workspace_dir(tmp_path, "alpha") / "preview"
+    (preview / "images").mkdir(parents=True)
+    (preview / "images" / "scene-001-01.jpg").write_bytes(b"\xff\xd8\xff\xe0jpg")
+    (preview / "source-proxy.mp4").write_bytes(b"\x00\x00\x00 ftypmp42")
+    client = TestClient(create_app(tmp_path))
+    r = client.get("/api/workspaces/alpha/preview/images/scene-001-01.jpg")
+    assert r.status_code == 200
+    assert r.content == b"\xff\xd8\xff\xe0jpg"
+    r = client.get("/api/workspaces/alpha/preview/source-proxy.mp4")
+    assert r.status_code == 200
+    assert r.content.startswith(b"\x00\x00\x00 ftyp")
+
+
+def test_preview_file_404_when_missing(tmp_path: Path) -> None:
+    _seed(tmp_path, "alpha")
+    r = TestClient(create_app(tmp_path)).get("/api/workspaces/alpha/preview/nope.html")
+    assert r.status_code == 404
+
+
+def test_preview_file_404_unknown_slug(tmp_path: Path) -> None:
+    r = TestClient(create_app(tmp_path)).get("/api/workspaces/ghost/preview/index.html")
+    assert r.status_code == 404
+
+
+def test_preview_file_rejects_path_traversal(tmp_path: Path) -> None:
+    """Block .. and absolute-path escape attempts — the preview dir must be a hard root."""
+    _seed(tmp_path, "alpha")
+    preview = workspace_dir(tmp_path, "alpha") / "preview"
+    preview.mkdir(parents=True)
+    (preview / "index.html").write_text("ok")
+    # Sibling secret outside preview/
+    secret = workspace_dir(tmp_path, "alpha") / "secret.txt"
+    secret.write_text("top-secret")
+    client = TestClient(create_app(tmp_path))
+    r = client.get("/api/workspaces/alpha/preview/../secret.txt")
+    assert r.status_code in (400, 404)
+    # Make sure the response body doesn't carry the secret either.
+    assert "top-secret" not in r.text
