@@ -38,6 +38,22 @@ def _list_thumbs(root: Path, slug: str) -> list[str]:
                   if p.is_file() and p.suffix.lower() == ".jpg")
 
 
+_VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
+
+
+def _count_outputs(root: Path, slug: str) -> int:
+    """Number of video clips currently in the workspace's output/ dir.
+
+    Counts files on disk (not the split manifest artifact) so the badge stays
+    truthful if clips are added or removed outside the pipeline.
+    """
+    out_dir = workspace_dir(root, slug) / "output"
+    if not out_dir.is_dir():
+        return 0
+    return sum(1 for p in out_dir.iterdir()
+               if p.is_file() and p.suffix.lower() in _VIDEO_EXTS)
+
+
 def _scene_thumbs(root: Path, slug: str, scene_ids: list[int]) -> dict[str, str]:
     """For each scene id, the first sorted thumbnail filename matching scene-{id:03d}-*.jpg."""
     img_dir = workspace_dir(root, slug) / "preview" / "images"
@@ -77,6 +93,7 @@ def _summary(root: Path, slug: str, m) -> dict:
         "all_done": all(s == "done" for s in statuses),
         "first_thumb": thumbs[0] if thumbs else None,
         "scenes_found": scenes_found,
+        "output_count": _count_outputs(root, slug),
     }
 
 

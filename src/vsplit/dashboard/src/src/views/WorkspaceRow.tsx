@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { ChevronRight, ChevronDown, Loader2 } from "lucide-react"
+import { ChevronRight, ChevronDown, Loader2, Film } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -124,6 +124,15 @@ export function WorkspaceRow({
           )}
           <div className="font-medium text-sm min-w-0 truncate">{ws.slug}</div>
         </button>
+        {ws.stages.split === "done" && ws.output_count > 0 && (
+          <span
+            className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-muted text-muted-foreground flex-shrink-0"
+            title={`${ws.output_count} output clip${ws.output_count === 1 ? "" : "s"} in output/`}
+          >
+            <Film className="h-3 w-3" />
+            {ws.output_count}
+          </span>
+        )}
         <NextPill ws={ws} onOpenCuts={onOpenCuts} onOpenPreview={onOpenPreview} />
         <Checkbox
           checked={selected}

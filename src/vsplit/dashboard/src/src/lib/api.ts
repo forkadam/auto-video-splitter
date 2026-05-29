@@ -49,6 +49,8 @@ export type Workspace = {
   first_thumb: string | null
   /** Number of scenes the detector found. `null` if detect hasn't run yet. */
   scenes_found: number | null
+  /** Number of video clips in the workspace's output/ dir (0 until split runs). */
+  output_count: number
 }
 
 export const api = {

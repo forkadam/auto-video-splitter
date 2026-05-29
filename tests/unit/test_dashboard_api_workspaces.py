@@ -132,6 +132,27 @@ def test_workspace_summary_exposes_scenes_found(tmp_path: Path) -> None:
     assert by_slug["predetect"]["scenes_found"] is None
 
 
+def test_workspace_summary_counts_output_clips(tmp_path: Path) -> None:
+    """Dashboard shows a badge with the number of produced clips, counted from
+    files actually on disk in output/ (not the split manifest artifact) so it
+    stays truthful if clips are added or removed outside the pipeline."""
+    _seed(tmp_path, "with-output")
+    out_dir = workspace_dir(tmp_path, "with-output") / "output"
+    out_dir.mkdir(parents=True)
+    (out_dir / "clip-001.mp4").write_bytes(b"\x00")
+    (out_dir / "clip-002.mp4").write_bytes(b"\x00")
+    (out_dir / "clip-003.mov").write_bytes(b"\x00")
+    # Non-video sidecar files must not inflate the count.
+    (out_dir / "notes.txt").write_text("ignore me")
+
+    _seed(tmp_path, "no-output")  # output/ dir never created
+
+    client = TestClient(create_app(tmp_path))
+    by_slug = {w["slug"]: w for w in client.get("/api/workspaces").json()["workspaces"]}
+    assert by_slug["with-output"]["output_count"] == 3
+    assert by_slug["no-output"]["output_count"] == 0
+
+
 def test_open_preview_invokes_webbrowser(tmp_path: Path, monkeypatch) -> None:
     _seed(tmp_path, "alpha")
     preview = workspace_dir(tmp_path, "alpha") / "preview"
