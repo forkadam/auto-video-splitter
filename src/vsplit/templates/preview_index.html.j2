@@ -27,7 +27,7 @@
 <body>
 <h1>{{ slug }}</h1>
 <div class="meta">
-  {{ scenes|length }} scenes · source: {{ source_rel }}
+  {{ scenes|length }} scenes{% if duration_label %} · {{ duration_label }}{% endif %} · source: {{ source_rel }}
 </div>
 {% if has_proxy %}
 <video controls preload="metadata" src="{{ proxy_name }}"></video>

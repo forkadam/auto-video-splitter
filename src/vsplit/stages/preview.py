@@ -103,6 +103,18 @@ class PreviewStage(Stage):
             )
             has_proxy = True
 
+        # Format the source duration as M:SS (or H:MM:SS past an hour) for the
+        # preview header. None until probe has populated metadata.
+        _dur = ctx.manifest.metadata.duration_seconds
+        duration_label = None
+        if _dur is not None:
+            total = round(_dur)
+            hours, rem = divmod(total, 3600)
+            minutes, secs = divmod(rem, 60)
+            duration_label = (
+                f"{hours}:{minutes:02d}:{secs:02d}" if hours else f"{minutes}:{secs:02d}"
+            )
+
         env = Environment(
             loader=FileSystemLoader(str(_TEMPLATE_DIR)),
             autoescape=select_autoescape(["html"]),
@@ -114,6 +126,7 @@ class PreviewStage(Stage):
             scenes=scenes_for_template,
             has_proxy=has_proxy,
             proxy_name=proxy_name,
+            duration_label=duration_label,
         )
         atomic_write_text(outdir / "index.html", rendered)
 
