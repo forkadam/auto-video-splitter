@@ -136,6 +136,14 @@ export function CutsDrawer({ slug, onClose, container }: Props) {
     <Drawer
       open={forceOpen}
       shouldScaleBackground={false}
+      // Non-modal: this drawer lives beside the preview pane, so the rest of the
+      // UI (preview video controls, list) must stay interactive. With modal the
+      // default, vaul sets body pointer-events:none and treats any outside click
+      // as a dismissal — clicking the preview would close the drawer and fire the
+      // unsaved-changes prompt. modal={false} keeps the background interactive,
+      // prevents outside-click dismissal, and drops the scroll-locking overlay.
+      // Closing stays available via Cancel / Save & continue / Esc / drag-down.
+      modal={false}
       onOpenChange={(o) => {
         if (o) return
         if (isDirty && !window.confirm("Discard unsaved changes?")) {
