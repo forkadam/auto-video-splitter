@@ -69,7 +69,7 @@ def collect_outputs(
 
     Returns:
         ``{collected, from_workspaces, skipped_not_done, skipped_no_output,
-        skipped_existing, files}`` — ``files`` is the list of destination paths
+        skipped_existing, skipped_ignored, files}`` — ``files`` is the list of destination paths
         that were actually written/linked this call.
     """
     if mode not in _VALID_MODES:
