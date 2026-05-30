@@ -51,6 +51,8 @@ export type Workspace = {
   scenes_found: number | null
   /** Number of video clips in the workspace's output/ dir (0 until split runs). */
   output_count: number
+  /** True when the user has parked this workspace via the Ignore action. */
+  ignored: boolean
 }
 
 export const api = {
@@ -67,6 +69,10 @@ export const api = {
       jsonRequest<{ cleaned: number }>("POST", `/api/workspaces/${slug}/clean`),
     approve: (slug: string) =>
       jsonRequest<{ approved: number }>("POST", `/api/workspaces/${slug}/approve`),
+    ignore: (slug: string) =>
+      jsonRequest<{ ignored: number }>("POST", `/api/workspaces/${slug}/ignore`),
+    unignore: (slug: string) =>
+      jsonRequest<{ ignored: number }>("POST", `/api/workspaces/${slug}/unignore`),
     openPreview: (slug: string) =>
       jsonRequest<{ opened: boolean; path: string }>("POST", `/api/workspaces/${slug}/open-preview`),
     cuts: {

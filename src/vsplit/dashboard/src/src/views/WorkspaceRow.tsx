@@ -65,6 +65,9 @@ function NextPill({
   if (a.kind === "idle") {
     return <span className={cn(base, "bg-muted text-muted-foreground")}>{a.label}</span>
   }
+  if (a.kind === "ignored") {
+    return <span className={cn(base, "bg-zinc-700/40 text-zinc-400")}>{a.label}</span>
+  }
   const onClick = () => {
     if (a.kind === "retry") return void api.workspaces.run(ws.slug, { only: a.stage })
     if (a.kind === "review") return onOpenCuts(ws.slug)
@@ -106,6 +109,7 @@ export function WorkspaceRow({
     <div className={cn(
       "rounded-lg border bg-card text-card-foreground transition-colors",
       "hover:bg-accent/40",
+      ws.ignored && "opacity-60 bg-zinc-800/40 border-zinc-700",
       selected && "ring-2 ring-primary/60 border-primary/40",
       previewSlug === ws.slug && "ring-2 ring-blue-400/60 border-blue-400/40",
     )}>
@@ -200,6 +204,17 @@ export function WorkspaceRow({
             <Button size="sm" variant="outline" onClick={() => setResetOpen(true)}>
               Reset…
             </Button>
+            {ws.ignored ? (
+              <Button size="sm" variant="ghost"
+                      onClick={() => { void api.workspaces.unignore(ws.slug) }}>
+                Unignore
+              </Button>
+            ) : (
+              <Button size="sm" variant="outline"
+                      onClick={() => { void api.workspaces.ignore(ws.slug) }}>
+                Ignore
+              </Button>
+            )}
             <Button size="sm" variant="destructive" onClick={() => {
               if (window.confirm(`Delete workspace ${ws.slug}?`)) {
                 api.workspaces.clean(ws.slug)

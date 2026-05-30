@@ -20,7 +20,9 @@ function matchesFilter(ws: Workspace, f: FilterState): boolean {
     // "done" means the workspace is fully complete — every stage. Using the
     // any-stage-matches rule here would match almost every workspace because
     // probe=done lands within seconds.
-    if (f.status === "done") {
+    if (f.status === "ignored") {
+      if (!ws.ignored) return false
+    } else if (f.status === "done") {
       if (!ws.all_done) return false
     } else if (f.status === "no_scenes") {
       // Synthetic status: the detector reported 0 scenes. Matches workspaces

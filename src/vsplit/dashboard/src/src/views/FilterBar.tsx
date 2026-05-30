@@ -4,7 +4,7 @@ import {
 } from "@/components/ui/select"
 
 const STATUSES = [
-  "any", "pending", "running", "done", "failed", "awaiting_user", "skipped", "no_scenes",
+  "any", "pending", "running", "done", "failed", "awaiting_user", "ignored", "no_scenes",
 ]
 const STAGES = ["any", "probe", "detect", "preview", "review", "plan", "split", "verify"]
 
