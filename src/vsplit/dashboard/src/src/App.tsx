@@ -201,6 +201,15 @@ export default function App() {
             )}
           </main>
           </div>
+          {/* Focus dim for the cuts editor. The drawer is non-modal (so the
+              preview pane stays interactive), which means vaul renders no
+              overlay. This replaces it with a dim confined to the list column:
+              it de-emphasizes + blocks the list, but has no click handler, so
+              clicking it never dismisses the drawer. Sits below the drawer
+              content (z-50). */}
+          {cutsSlug && (
+            <div className="absolute inset-0 z-40 bg-black/70" aria-hidden />
+          )}
         </div>
         {previewSlug && (
           <div className="flex-1 min-w-0 flex flex-col bg-background">
