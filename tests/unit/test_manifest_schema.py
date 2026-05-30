@@ -77,3 +77,52 @@ def test_manifest_rejects_unknown_stage_status():
     }
     with pytest.raises(ValidationError):
         Manifest.model_validate(data)
+
+
+def test_manifest_ignored_defaults_false_when_absent():
+    """Existing manifests (no `ignored` key) load with ignored=False, ignored_at=None."""
+    data = {
+        "schema_version": 1,
+        "id": "birthday",
+        "created_at": _now(),
+        "updated_at": _now(),
+        "source": {
+            "relative_path": "Birthday.mov",
+            "size_bytes": 100,
+            "mtime": _now(),
+            "partial_hash": "sha256:abc",
+        },
+        "stages": {
+            name: {"status": "pending", "artifacts": {}}
+            for name in ["probe", "detect", "preview", "review", "plan", "split", "verify"]
+        },
+    }
+    m = Manifest.model_validate(data)
+    assert m.ignored is False
+    assert m.ignored_at is None
+
+
+def test_manifest_ignored_round_trips():
+    data = {
+        "schema_version": 1,
+        "id": "birthday",
+        "created_at": _now(),
+        "updated_at": _now(),
+        "ignored": True,
+        "ignored_at": _now(),
+        "source": {
+            "relative_path": "Birthday.mov",
+            "size_bytes": 100,
+            "mtime": _now(),
+            "partial_hash": "sha256:abc",
+        },
+        "stages": {
+            name: {"status": "pending", "artifacts": {}}
+            for name in ["probe", "detect", "preview", "review", "plan", "split", "verify"]
+        },
+    }
+    m = Manifest.model_validate(data)
+    assert m.ignored is True
+    assert m.ignored_at is not None
+    m2 = Manifest.model_validate(m.model_dump(mode="json"))
+    assert m2.ignored is True

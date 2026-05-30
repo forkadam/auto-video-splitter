@@ -59,6 +59,8 @@ class Manifest(BaseModel):
     created_at: datetime
     updated_at: datetime
     source: SourceInfo
+    ignored: bool = False
+    ignored_at: datetime | None = None
     metadata: MetadataBlock = Field(default_factory=MetadataBlock)
     tool_versions: ToolVersions = Field(default_factory=ToolVersions)
     stages: dict[str, StageBlock]
