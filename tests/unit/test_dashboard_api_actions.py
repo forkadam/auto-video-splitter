@@ -105,3 +105,24 @@ def test_batch_approve(tmp_path: Path) -> None:
         "/api/batch/approve", json={"slugs": ["a", "b"]}
     )
     assert r.json() == {"approved": 1}
+
+
+def test_ignore_and_unignore_endpoints(tmp_path: Path) -> None:
+    _seed(tmp_path, "alpha")
+    client = TestClient(create_app(tmp_path))
+
+    r = client.post("/api/workspaces/alpha/ignore")
+    assert r.status_code == 200
+    assert r.json() == {"ignored": 1}
+    assert load_manifest(workspace_dir(tmp_path, "alpha")).ignored is True
+
+    r = client.post("/api/workspaces/alpha/unignore")
+    assert r.status_code == 200
+    assert r.json() == {"ignored": 1}
+    assert load_manifest(workspace_dir(tmp_path, "alpha")).ignored is False
+
+
+def test_ignore_unknown_slug_404(tmp_path: Path) -> None:
+    client = TestClient(create_app(tmp_path))
+    r = client.post("/api/workspaces/ghost/ignore")
+    assert r.status_code == 404

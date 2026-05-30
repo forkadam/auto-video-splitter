@@ -241,3 +241,13 @@ def test_preview_file_rejects_path_traversal(tmp_path: Path) -> None:
     assert r.status_code in (400, 404)
     # Make sure the response body doesn't carry the secret either.
     assert "top-secret" not in r.text
+
+
+def test_list_exposes_ignored_flag(tmp_path: Path) -> None:
+    from vsplit.core.actions import ignore_workspaces
+    _seed(tmp_path, "alpha")
+    ignore_workspaces(tmp_path, ["alpha"])
+    r = TestClient(create_app(tmp_path)).get("/api/workspaces")
+    assert r.status_code == 200
+    ws = next(w for w in r.json()["workspaces"] if w["slug"] == "alpha")
+    assert ws["ignored"] is True
