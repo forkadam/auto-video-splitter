@@ -145,15 +145,20 @@ export default function App() {
         </Button>
       </header>
       <div className="flex-1 min-h-0 flex">
-        {/* Left: workspace list column. Acts as the drawer container so CutsDrawer
-            never overlaps the preview pane. */}
+        {/* Left: workspace list column. The OUTER div is the drawer container —
+            it stays position:relative and non-scrolling so the portaled CutsDrawer
+            (absolute inset-0 overlay + bottom-0 content) pins to the visible column
+            region. Scrolling lives on the INNER wrapper; if the outer div were the
+            scroll container, the drawer would anchor to the tall scrollable content
+            instead of the viewport and appear shifted/unscrollable. */}
         <div
           ref={setListCol}
           className={
-            "relative overflow-y-auto " +
+            "relative overflow-hidden " +
             (previewSlug ? "w-[55%] min-w-[480px] border-r border-border" : "w-full")
           }
         >
+          <div className="absolute inset-0 overflow-y-auto">
           <main className="max-w-6xl mx-auto p-6">
             <FilterBar value={filter} onChange={setFilter} />
             {workspaces.length === 0 ? (
@@ -195,6 +200,7 @@ export default function App() {
               </div>
             )}
           </main>
+          </div>
         </div>
         {previewSlug && (
           <div className="flex-1 min-w-0 flex flex-col bg-background">
