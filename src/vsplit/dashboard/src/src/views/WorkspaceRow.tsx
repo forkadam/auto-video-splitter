@@ -66,7 +66,7 @@ function NextPill({
     return <span className={cn(base, "bg-muted text-muted-foreground")}>{a.label}</span>
   }
   if (a.kind === "ignored") {
-    return <span className={cn(base, "bg-zinc-700/40 text-zinc-400")}>{a.label}</span>
+    return <span className={cn(base, "bg-zinc-500/40 text-zinc-100 ring-1 ring-inset ring-zinc-400/50")}>{a.label}</span>
   }
   const onClick = () => {
     if (a.kind === "retry") return void api.workspaces.run(ws.slug, { only: a.stage })
@@ -109,7 +109,7 @@ export function WorkspaceRow({
     <div className={cn(
       "rounded-lg border bg-card text-card-foreground transition-colors",
       "hover:bg-accent/40",
-      ws.ignored && "opacity-60 bg-zinc-800/40 border-zinc-700",
+      ws.ignored && "bg-zinc-700/40 border-zinc-500 border-l-4 border-l-zinc-300",
       selected && "ring-2 ring-primary/60 border-primary/40",
       previewSlug === ws.slug && "ring-2 ring-blue-400/60 border-blue-400/40",
     )}>
