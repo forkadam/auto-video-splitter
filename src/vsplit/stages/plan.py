@@ -43,11 +43,20 @@ class PlanStage(Stage):
                 merged.append([s])
 
         resolved = []
+        dropped_degenerate: list[int] = []
         out_index = 1
         for group in merged:
             start_req = _parse_tc(group[0].start)
             end_req = _parse_tc(group[-1].end)
-            if end_req - start_req < ctx.config.plan.min_segment_length:
+            # Honor explicit keeps: every scene here was already chosen during
+            # review, so we do NOT drop short segments — only guard against
+            # degenerate (zero/negative-length) spans that ffmpeg cannot cut.
+            if end_req <= start_req:
+                dropped_degenerate.append(group[0].id)
+                ctx.logger.warning(
+                    "plan: dropping scene %s — non-positive length (%.3fs → %.3fs)",
+                    group[0].id, start_req, end_req,
+                )
                 continue
             actual_start = snap_preceding(start_req, keyframes)
             actual_end = end_req
@@ -69,4 +78,7 @@ class PlanStage(Stage):
             out_index += 1
 
         atomic_write_json(outdir / "cuts-resolved.json", {"scenes": resolved})
-        return StageResult(artifacts={"segments": len(resolved)})
+        return StageResult(artifacts={
+            "segments": len(resolved),
+            "dropped_degenerate": dropped_degenerate,
+        })

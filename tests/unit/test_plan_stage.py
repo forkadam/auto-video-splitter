@@ -38,6 +38,41 @@ def _ctx(tmp_path: Path) -> StageContext:
     )
 
 
+def _write_cuts(ctx: StageContext, scenes: list[dict]) -> None:
+    (ctx.workspace_dir / "decisions" / "cuts.json").write_text(json.dumps({
+        "schema_version": 1, "scenes": scenes,
+    }))
+
+
+def test_plan_honors_short_kept_scene(tmp_path):
+    """A kept scene shorter than the old 1.0s min is still produced — once the
+    user has reviewed and kept it, plan must not silently drop it."""
+    ctx = _ctx(tmp_path)
+    _write_cuts(ctx, [
+        {"id": 1, "start": "00:00:01.000", "end": "00:00:01.600", "keep": True},  # 0.6s
+        {"id": 2, "start": "00:00:06.000", "end": "00:00:09.000", "keep": True},  # 3.0s
+    ])
+    result = PlanStage().run(ctx)
+    data = json.loads((ctx.workspace_dir / "plan" / "cuts-resolved.json").read_text())
+    assert [s["id"] for s in data["scenes"]] == [1, 2]
+    assert result.artifacts["segments"] == 2
+    assert result.artifacts["dropped_degenerate"] == []
+
+
+def test_plan_drops_degenerate_scene(tmp_path):
+    """A zero/negative-length kept scene is dropped (ffmpeg can't cut it) and
+    reported in the artifact, not silently swallowed."""
+    ctx = _ctx(tmp_path)
+    _write_cuts(ctx, [
+        {"id": 1, "start": "00:00:05.000", "end": "00:00:05.000", "keep": True},  # 0s
+        {"id": 2, "start": "00:00:06.000", "end": "00:00:09.000", "keep": True},
+    ])
+    result = PlanStage().run(ctx)
+    data = json.loads((ctx.workspace_dir / "plan" / "cuts-resolved.json").read_text())
+    assert [s["id"] for s in data["scenes"]] == [2]
+    assert result.artifacts["dropped_degenerate"] == [1]
+
+
 def test_plan_snaps_to_preceding_keyframe(tmp_path):
     ctx = _ctx(tmp_path)
     result = PlanStage().run(ctx)
