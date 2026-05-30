@@ -54,6 +54,49 @@ def approve_workspaces(working_root: Path, slugs: list[str]) -> int:
     return approved
 
 
+def ignore_workspaces(working_root: Path, slugs: list[str]) -> int:
+    """Mark each workspace as ignored (parked). Returns the number changed.
+
+    Idempotent: a workspace already ignored is skipped and not counted. Missing
+    workspaces (no manifest) are silently skipped.
+    """
+    changed = 0
+    for slug in slugs:
+        ws = workspace_dir(working_root, slug)
+        try:
+            m = load_manifest(ws)
+        except FileNotFoundError:
+            continue
+        if m.ignored:
+            continue
+        m.ignored = True
+        m.ignored_at = datetime.now(timezone.utc)
+        save_manifest(ws, m)
+        changed += 1
+    return changed
+
+
+def unignore_workspaces(working_root: Path, slugs: list[str]) -> int:
+    """Clear the ignored flag on each workspace. Returns the number changed.
+
+    Idempotent: a workspace that isn't ignored is skipped and not counted.
+    """
+    changed = 0
+    for slug in slugs:
+        ws = workspace_dir(working_root, slug)
+        try:
+            m = load_manifest(ws)
+        except FileNotFoundError:
+            continue
+        if not m.ignored:
+            continue
+        m.ignored = False
+        m.ignored_at = None
+        save_manifest(ws, m)
+        changed += 1
+    return changed
+
+
 _STAGE_SUBDIRS = {
     "probe": "probe", "detect": "detect", "preview": "preview",
     "review": "decisions", "plan": "plan", "split": "output", "verify": None,
