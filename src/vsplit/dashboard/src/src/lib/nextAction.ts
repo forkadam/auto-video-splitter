@@ -4,6 +4,7 @@ const ORDER = ["probe", "detect", "preview", "review", "plan", "split", "verify"
 
 export type NextAction =
   | { kind: "done"; label: "Done" }
+  | { kind: "ignored"; label: "Ignored" }
   | { kind: "retry"; label: string; stage: string }
   | { kind: "running"; label: string; stage: string }
   | { kind: "review"; label: "Review & approve →" }
@@ -12,6 +13,7 @@ export type NextAction =
   | { kind: "idle"; label: "Idle" }
 
 export function nextAction(ws: Workspace): NextAction {
+  if (ws.ignored) return { kind: "ignored", label: "Ignored" }
   if (ws.all_done) return { kind: "done", label: "Done" }
 
   for (const s of ORDER) {

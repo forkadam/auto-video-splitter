@@ -69,7 +69,7 @@ def collect_outputs(
 
     Returns:
         ``{collected, from_workspaces, skipped_not_done, skipped_no_output,
-        skipped_existing, files}`` — ``files`` is the list of destination paths
+        skipped_existing, skipped_ignored, files}`` — ``files`` is the list of destination paths
         that were actually written/linked this call.
     """
     if mode not in _VALID_MODES:
@@ -80,6 +80,7 @@ def collect_outputs(
     if not dry_run:
         dest.mkdir(parents=True, exist_ok=True)
 
+    collect_all = slugs is None
     idx = load_index(working_root)
     candidate_slugs = list(idx.workspaces.keys()) if slugs is None else list(slugs)
 
@@ -88,6 +89,7 @@ def collect_outputs(
     skipped_not_done = 0
     skipped_no_output = 0
     skipped_existing = 0
+    skipped_ignored = 0
     files: list[str] = []
 
     for slug in candidate_slugs:
@@ -97,6 +99,10 @@ def collect_outputs(
         try:
             m = load_manifest(ws)
         except FileNotFoundError:
+            continue
+
+        if collect_all and m.ignored:
+            skipped_ignored += 1
             continue
 
         if m.stages["split"].status != "done":
@@ -136,5 +142,6 @@ def collect_outputs(
         "skipped_not_done": skipped_not_done,
         "skipped_no_output": skipped_no_output,
         "skipped_existing": skipped_existing,
+        "skipped_ignored": skipped_ignored,
         "files": files,
     }

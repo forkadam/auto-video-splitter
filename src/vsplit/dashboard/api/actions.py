@@ -7,7 +7,8 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 from vsplit.core.actions import (
-    approve_workspaces, clean_workspaces, reset_workspaces, run_workspaces,
+    approve_workspaces, clean_workspaces, ignore_workspaces,
+    reset_workspaces, run_workspaces, unignore_workspaces,
 )
 from vsplit.core.collect import collect_outputs
 from vsplit.core.config import load_resolved_config
@@ -52,6 +53,22 @@ async def approve_one(slug: str, request: Request) -> dict:
     _require_slug(root, slug)
     n = await run_in_threadpool(approve_workspaces, root, [slug])
     return {"approved": n}
+
+
+@router.post("/{slug}/ignore")
+async def ignore_one(slug: str, request: Request) -> dict:
+    root: Path = request.app.state.working_root
+    _require_slug(root, slug)
+    n = await run_in_threadpool(ignore_workspaces, root, [slug])
+    return {"ignored": n}
+
+
+@router.post("/{slug}/unignore")
+async def unignore_one(slug: str, request: Request) -> dict:
+    root: Path = request.app.state.working_root
+    _require_slug(root, slug)
+    n = await run_in_threadpool(unignore_workspaces, root, [slug])
+    return {"ignored": n}
 
 
 @router.post("/{slug}/reset")

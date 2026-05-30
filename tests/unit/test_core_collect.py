@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from vsplit.core.actions import ignore_workspaces
 from vsplit.core.collect import collect_outputs
 from vsplit.core.index import load_index, save_index
 from vsplit.core.manifest import load_manifest, new_manifest, save_manifest
@@ -189,3 +190,30 @@ def test_collect_dry_run_with_move_mode_does_not_remove_sources(tmp_path: Path) 
     result = collect_outputs(tmp_path, mode="move", dry_run=True)
     assert result["collected"] == 1
     assert src.exists(), "dry-run must not delete source files even in move mode"
+
+
+def test_collect_all_excludes_ignored(tmp_path: Path) -> None:
+    """With no slugs, an ignored split=done workspace is skipped and counted."""
+    _seed(tmp_path, "alpha", clip_names=["alpha-01.mp4"])
+    _seed(tmp_path, "beta", clip_names=["beta-01.mp4"])
+    ignore_workspaces(tmp_path, ["beta"])
+
+    result = collect_outputs(tmp_path)
+
+    dest = tmp_path / "collected"
+    assert (dest / "alpha-01.mp4").exists()
+    assert not (dest / "beta-01.mp4").exists()
+    assert result["collected"] == 1
+    assert result["skipped_ignored"] == 1
+
+
+def test_collect_explicit_slugs_includes_ignored(tmp_path: Path) -> None:
+    """Naming an ignored workspace explicitly still collects it (explicit intent)."""
+    _seed(tmp_path, "beta", clip_names=["beta-01.mp4"])
+    ignore_workspaces(tmp_path, ["beta"])
+
+    result = collect_outputs(tmp_path, slugs=["beta"])
+
+    assert (tmp_path / "collected" / "beta-01.mp4").exists()
+    assert result["collected"] == 1
+    assert result["skipped_ignored"] == 0
