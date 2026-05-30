@@ -34,10 +34,15 @@ class PlanStage(Stage):
         keyframes = load_keyframes(ctx.workspace_dir / "probe" / "keyframes.csv")
         kept = [s for s in cuts.scenes if s.keep]
 
-        # Merge adjacent scenes via merge_with_next
+        # Merge adjacent kept scenes via merge_with_next. Only join when the
+        # next kept scene is the immediate timeline neighbor (id N → N+1). A
+        # merge flag whose following scene was dropped must NOT bridge the gap:
+        # a single stream-copy clip spans first.start → last.end, so bridging
+        # would swallow the footage of the dropped scenes in between.
         merged: list[list[Scene]] = []
         for s in kept:
-            if merged and merged[-1][-1].merge_with_next:
+            prev = merged[-1][-1] if merged else None
+            if prev is not None and prev.merge_with_next and s.id == prev.id + 1:
                 merged[-1].append(s)
             else:
                 merged.append([s])

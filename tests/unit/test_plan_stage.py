@@ -73,6 +73,44 @@ def test_plan_drops_degenerate_scene(tmp_path):
     assert result.artifacts["dropped_degenerate"] == [1]
 
 
+def test_merge_joins_adjacent_kept_scenes(tmp_path):
+    """merge_with_next on a scene whose next scene is also kept & adjacent
+    joins them into one clip spanning the combined range."""
+    ctx = _ctx(tmp_path)
+    _write_cuts(ctx, [
+        {"id": 1, "start": "00:00:01.000", "end": "00:00:02.000",
+         "keep": True, "merge_with_next": True},
+        {"id": 2, "start": "00:00:02.000", "end": "00:00:08.000", "keep": True},
+    ])
+    PlanStage().run(ctx)
+    data = json.loads((ctx.workspace_dir / "plan" / "cuts-resolved.json").read_text())
+    assert len(data["scenes"]) == 1
+    assert data["scenes"][0]["requested_start"] == 1.0
+    assert data["scenes"][0]["requested_end"] == 8.0
+
+
+def test_merge_does_not_bridge_dropped_scenes(tmp_path):
+    """A merge_with_next whose immediate next scene was dropped must NOT bridge
+    to the next *kept* scene — that would swallow the dropped footage into one
+    contiguous stream-copy clip. The flag is ignored across the gap."""
+    ctx = _ctx(tmp_path)
+    _write_cuts(ctx, [
+        {"id": 3, "start": "00:00:01.000", "end": "00:00:02.000",
+         "keep": True, "merge_with_next": True},
+        {"id": 4, "start": "00:00:02.000", "end": "00:00:03.000", "keep": False},
+        {"id": 5, "start": "00:00:03.000", "end": "00:00:08.000", "keep": False},
+        {"id": 6, "start": "00:00:08.000", "end": "00:00:09.000", "keep": True},
+        {"id": 7, "start": "00:00:09.000", "end": "00:00:11.000", "keep": True},
+    ])
+    PlanStage().run(ctx)
+    data = json.loads((ctx.workspace_dir / "plan" / "cuts-resolved.json").read_text())
+    # 3 separate clips — scene 3 must end at its own boundary (2.0s), NOT extend
+    # to scene 6's end (9.0s) which would include dropped scenes 4 and 5.
+    assert [s["id"] for s in data["scenes"]] == [3, 6, 7]
+    clip3 = next(s for s in data["scenes"] if s["id"] == 3)
+    assert clip3["requested_end"] == 2.0
+
+
 def test_plan_snaps_to_preceding_keyframe(tmp_path):
     ctx = _ctx(tmp_path)
     result = PlanStage().run(ctx)
