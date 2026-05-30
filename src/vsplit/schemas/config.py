@@ -37,6 +37,11 @@ class ReviewConfig(BaseModel):
 class PlanConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     keyframe_snap: Literal["nearest_preceding"] = "nearest_preceding"
+    # Deprecated / no longer applied. The plan stage runs only on scenes the
+    # user has already reviewed and kept, so dropping them by a minimum length
+    # would silently veto explicit decisions. Retained so existing config files
+    # that set it still load; plan now keeps every kept scene with a positive
+    # length and only skips degenerate (zero/negative-length) spans.
     min_segment_length: float = 1.0
 
 
