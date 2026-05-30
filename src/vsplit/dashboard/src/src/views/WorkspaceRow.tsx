@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { ChevronRight, ChevronDown, Loader2, Film } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { cn, formatDuration } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -39,6 +39,13 @@ type Detail = {
   stages?: Record<string, string>
   manifest?: {
     stages?: Record<string, { artifacts?: Record<string, unknown> }>
+    metadata?: {
+      duration_seconds?: number | null
+      width?: number | null
+      height?: number | null
+      fps?: number | null
+      video_codec?: string | null
+    }
   }
 }
 
@@ -105,6 +112,14 @@ export function WorkspaceRow({
   const thumbNames = detail?.thumb_names ?? []
   const previewReady = ws.stages.preview === "done"
 
+  const md = detail?.manifest?.metadata
+  const metaBits = [
+    formatDuration(md?.duration_seconds ?? ws.duration_seconds),
+    md?.width && md?.height ? `${md.width}×${md.height}` : null,
+    md?.fps ? `${Math.round(md.fps)} fps` : null,
+    md?.video_codec ?? null,
+  ].filter(Boolean) as string[]
+
   return (
     <div className={cn(
       "rounded-lg border bg-card text-card-foreground transition-colors",
@@ -126,7 +141,14 @@ export function WorkspaceRow({
           ) : (
             <div className="w-14 h-8 rounded-md bg-muted ring-1 ring-border" />
           )}
-          <div className="font-medium text-sm min-w-0 truncate">{ws.slug}</div>
+          <div className="min-w-0 flex-1">
+            <div className="font-medium text-sm truncate">{ws.slug}</div>
+            {formatDuration(ws.duration_seconds) && (
+              <div className="text-xs text-muted-foreground tabular-nums leading-tight">
+                {formatDuration(ws.duration_seconds)}
+              </div>
+            )}
+          </div>
         </button>
         {ws.stages.split === "done" && ws.output_count > 0 && (
           <span
@@ -167,6 +189,11 @@ export function WorkspaceRow({
 
       {expanded && (
         <div className="px-4 pb-3.5 pt-2 border-t border-border space-y-3">
+          {metaBits.length > 0 && (
+            <div className="font-mono text-xs text-muted-foreground">
+              {metaBits.join("  ·  ")}
+            </div>
+          )}
           {thumbNames.length > 0 && (
             <div className="flex gap-1.5 overflow-x-auto pb-1">
               {thumbNames.map((name) => (

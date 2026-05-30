@@ -87,6 +87,7 @@ def _summary(root: Path, slug: str, m) -> dict:
     return {
         "slug": slug,
         "ignored": m.ignored,
+        "duration_seconds": m.metadata.duration_seconds,
         "source": m.source.relative_path,
         "stages": {n: b.status for n, b in m.stages.items()},
         "any_failed": "failed" in statuses,

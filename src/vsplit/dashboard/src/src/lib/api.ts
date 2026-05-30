@@ -53,6 +53,8 @@ export type Workspace = {
   output_count: number
   /** True when the user has parked this workspace via the Ignore action. */
   ignored: boolean
+  /** Source video duration in seconds. `null` until probe has run. */
+  duration_seconds: number | null
 }
 
 export const api = {

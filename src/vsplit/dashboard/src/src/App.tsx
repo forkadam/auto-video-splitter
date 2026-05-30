@@ -212,7 +212,13 @@ export default function App() {
           )}
         </div>
         {previewSlug && (
-          <div className="flex-1 min-w-0 flex flex-col bg-background">
+          // pointer-events-auto: the cuts drawer uses vaul's faux-non-modal mode,
+          // but vaul doesn't forward modal=false to Radix's Dialog — so Radix keeps
+          // re-asserting `pointer-events: none` on <body> (e.g. after an edit
+          // re-render), which would silently kill clicks on this preview pane.
+          // Re-enabling pointer events on this subtree keeps the preview live
+          // regardless, while the list column stays intentionally blocked.
+          <div className="flex-1 min-w-0 flex flex-col bg-background pointer-events-auto">
             <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border flex-shrink-0">
               <div className="text-sm font-medium truncate flex-1">{previewSlug}</div>
               <Button
