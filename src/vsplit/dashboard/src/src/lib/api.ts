@@ -37,6 +37,7 @@ export type CutsResponse = {
   cuts: CutsBody
   hash: string
   scene_thumbs: Record<string, string>
+  keyframes: number[]
 }
 
 export type Workspace = {

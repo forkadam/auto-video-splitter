@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { api, type CutsBody } from "@/lib/api"
+import { TC_RE, parseTc, formatTc, snapPreceding } from "@/lib/timecode"
 
 type Props = {
   slug: string | null
@@ -20,6 +21,7 @@ type Loaded = {
   cuts: CutsBody
   hash: string
   thumbs: Record<string, string>
+  keyframes: number[]
 }
 
 export function CutsDrawer({ slug, onClose, container }: Props) {
@@ -40,7 +42,7 @@ export function CutsDrawer({ slug, onClose, container }: Props) {
     api.workspaces.cuts.get(slug)
       .then((r) => {
         if (cancelled) return
-        setLoaded({ cuts: r.cuts, hash: r.hash, thumbs: r.scene_thumbs })
+        setLoaded({ cuts: r.cuts, hash: r.hash, thumbs: r.scene_thumbs, keyframes: r.keyframes })
         setDraft(structuredClone(r.cuts))
         setError(null)
       })
@@ -78,6 +80,25 @@ export function CutsDrawer({ slug, onClose, container }: Props) {
     return next
   })
 
+  const sceneErrors = useMemo<Record<number, string | null>>(() => {
+    const errs: Record<number, string | null> = {}
+    for (const s of draft?.scenes ?? []) {
+      if (!TC_RE.test(s.start) || !TC_RE.test(s.end)) {
+        errs[s.id] = "timestamps must be HH:MM:SS.fff"
+      } else if (parseTc(s.start) >= parseTc(s.end)) {
+        errs[s.id] = "end must be after start"
+      } else {
+        errs[s.id] = null
+      }
+    }
+    return errs
+  }, [draft])
+
+  const hasErrors = useMemo(
+    () => Object.values(sceneErrors).some(Boolean),
+    [sceneErrors],
+  )
+
   const update = (idx: number, patch: Partial<CutsBody["scenes"][number]>) => {
     setDraft((d) => {
       if (!d) return d
@@ -101,7 +122,7 @@ export function CutsDrawer({ slug, onClose, container }: Props) {
       const r = await api.workspaces.cuts.put(slug, {
         cuts: draft, expected_hash: loaded.hash,
       })
-      setLoaded({ cuts: structuredClone(draft), hash: r.hash, thumbs: loaded.thumbs })
+      setLoaded({ cuts: structuredClone(draft), hash: r.hash, thumbs: loaded.thumbs, keyframes: loaded.keyframes })
       return true
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
@@ -189,6 +210,13 @@ export function CutsDrawer({ slug, onClose, container }: Props) {
           {slug && loaded && draft && draft.scenes.map((s, i) => {
             const thumb = loaded.thumbs[String(s.id)]
             const isLast = i === draft.scenes.length - 1
+            const startOk = TC_RE.test(s.start)
+            const endOk = TC_RE.test(s.end)
+            const snapped = startOk && loaded.keyframes.length > 0
+              ? snapPreceding(parseTc(s.start), loaded.keyframes)
+              : null
+            const drift = snapped !== null ? parseTc(s.start) - snapped : null
+            const err = sceneErrors[s.id]
             return (
               <div key={s.id} className="flex gap-3 p-2 rounded-md border border-border bg-card">
                 {thumb ? (
@@ -202,9 +230,30 @@ export function CutsDrawer({ slug, onClose, container }: Props) {
                   <div className="w-32 h-[4.5rem] rounded bg-muted ring-1 ring-border flex-shrink-0" />
                 )}
                 <div className="flex-1 min-w-0">
-                  <div className="font-mono text-xs text-muted-foreground">
-                    #{s.id.toString().padStart(3, "0")}  ·  {s.start} – {s.end}
+                  <div className="flex items-center gap-2 font-mono text-xs text-muted-foreground">
+                    <span className="shrink-0">#{s.id.toString().padStart(3, "0")}</span>
+                    <Input
+                      value={s.start}
+                      aria-label={`scene ${s.id} start`}
+                      onChange={(e) => update(i, { start: e.target.value })}
+                      className={`h-7 w-32 text-xs font-mono ${startOk ? "" : "border-red-500/60"}`}
+                    />
+                    <span>–</span>
+                    <Input
+                      value={s.end}
+                      aria-label={`scene ${s.id} end`}
+                      onChange={(e) => update(i, { end: e.target.value })}
+                      className={`h-7 w-32 text-xs font-mono ${endOk ? "" : "border-red-500/60"}`}
+                    />
+                    {drift !== null && (
+                      <span className="shrink-0 text-muted-foreground/70">
+                        {drift < 0.001
+                          ? "⤷ on keyframe"
+                          : `⤷ cuts at ${formatTc(snapped!)} (−${drift.toFixed(2)}s)`}
+                      </span>
+                    )}
                   </div>
+                  {err && <div className="mt-1 text-xs text-red-400">{err}</div>}
                   <div className="mt-1.5 flex items-center gap-3 flex-wrap">
                     <label className="flex items-center gap-1.5 text-sm">
                       <Checkbox checked={s.keep}
@@ -234,10 +283,10 @@ export function CutsDrawer({ slug, onClose, container }: Props) {
 
         <DrawerFooter className="flex-row justify-end gap-2">
           <Button variant="ghost" onClick={cancel} disabled={busy}>Cancel</Button>
-          <Button variant="secondary" onClick={save} disabled={busy || !isDirty}>
+          <Button variant="secondary" onClick={save} disabled={busy || !isDirty || hasErrors}>
             Save
           </Button>
-          <Button onClick={saveAndContinue} disabled={busy}>
+          <Button onClick={saveAndContinue} disabled={busy || hasErrors}>
             Save & continue
           </Button>
         </DrawerFooter>

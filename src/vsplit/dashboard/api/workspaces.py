@@ -9,6 +9,7 @@ from pydantic import BaseModel, ValidationError
 from vsplit.core.atomic import atomic_write_text
 from vsplit.core.hash import content_hash
 from vsplit.core.index import load_index
+from vsplit.core.keyframes import load_keyframes
 from vsplit.core.manifest import load_manifest
 from vsplit.core.paths import workspace_dir
 from vsplit.schemas.cuts import CutsJson
@@ -181,10 +182,13 @@ def get_cuts(slug: str, request: Request) -> dict:
         # that field_validators put into ctx.
         raise HTTPException(status_code=422, detail=e.errors(include_context=False)) from e
     scene_ids = [s.id for s in parsed.scenes]
+    kf_path = workspace_dir(root, slug) / "probe" / "keyframes.csv"
+    keyframes = sorted(load_keyframes(kf_path)) if kf_path.is_file() else []
     return {
         "cuts": json.loads(raw),
         "hash": content_hash(cuts_path),
         "scene_thumbs": _scene_thumbs(root, slug, scene_ids),
+        "keyframes": keyframes,
     }
 
 
