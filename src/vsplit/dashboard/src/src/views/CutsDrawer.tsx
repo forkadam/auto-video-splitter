@@ -80,6 +80,43 @@ export function CutsDrawer({ slug, onClose, container }: Props) {
     return next
   })
 
+  const mergeableCount = Math.max(0, (draft?.scenes.length ?? 0) - 1)
+  const mergedCount = useMemo(
+    () => draft?.scenes.slice(0, -1).reduce((n, s) => n + (s.merge_with_next ? 1 : 0), 0) ?? 0,
+    [draft],
+  )
+  const mergeAllState: boolean | "indeterminate" = (() => {
+    if (mergeableCount === 0) return false
+    if (mergedCount === mergeableCount) return true
+    if (mergedCount === 0) return false
+    return "indeterminate"
+  })()
+  // Toggle merge on every scene EXCEPT the last (it has no "next"). Never touches keep.
+  const toggleMergeAll = () => setDraft((d) => {
+    if (!d) return d
+    const next = structuredClone(d)
+    const allMerged = next.scenes.slice(0, -1).every((s) => s.merge_with_next)
+    next.scenes.forEach((s, i) => {
+      if (i < next.scenes.length - 1) s.merge_with_next = !allMerged
+    })
+    return next
+  })
+
+  // Per-scene keep toggle couples merge both ways: checking keep checks merge,
+  // unchecking keep unchecks it. The last scene has no "next", so leave its merge
+  // untouched. Merge stays manually overridable via its own checkbox afterward.
+  const setKeep = (idx: number, keep: boolean) => setDraft((d) => {
+    if (!d) return d
+    const next = structuredClone(d)
+    const isLast = idx === next.scenes.length - 1
+    next.scenes[idx] = {
+      ...next.scenes[idx],
+      keep,
+      merge_with_next: isLast ? next.scenes[idx].merge_with_next : keep,
+    }
+    return next
+  })
+
   const sceneErrors = useMemo<Record<number, string | null>>(() => {
     const errs: Record<number, string | null> = {}
     for (const s of draft?.scenes ?? []) {
@@ -189,20 +226,38 @@ export function CutsDrawer({ slug, onClose, container }: Props) {
         )}
 
         {draft && draft.scenes.length > 0 && (
-          <label className="mx-4 mb-2 flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none w-fit">
-            <Checkbox
-              checked={keepAllState}
-              onCheckedChange={toggleKeepAll}
-              aria-label="Toggle keep on all scenes"
-            />
-            <span>
-              {keepCount === 0
-                ? `Keep all (${draft.scenes.length})`
-                : keepCount === draft.scenes.length
-                ? `Keep none (${draft.scenes.length})`
-                : `${keepCount} of ${draft.scenes.length} kept`}
-            </span>
-          </label>
+          <div className="mx-4 mb-2 flex items-center gap-4 text-xs text-muted-foreground select-none">
+            <label className="flex items-center gap-2 cursor-pointer w-fit">
+              <Checkbox
+                checked={keepAllState}
+                onCheckedChange={toggleKeepAll}
+                aria-label="Toggle keep on all scenes"
+              />
+              <span>
+                {keepCount === 0
+                  ? `Keep all (${draft.scenes.length})`
+                  : keepCount === draft.scenes.length
+                  ? `Keep none (${draft.scenes.length})`
+                  : `${keepCount} of ${draft.scenes.length} kept`}
+              </span>
+            </label>
+            {mergeableCount > 0 && (
+              <label className="flex items-center gap-2 cursor-pointer w-fit">
+                <Checkbox
+                  checked={mergeAllState}
+                  onCheckedChange={toggleMergeAll}
+                  aria-label="Toggle merge on all scenes"
+                />
+                <span>
+                  {mergedCount === 0
+                    ? `Merge all (${mergeableCount})`
+                    : mergedCount === mergeableCount
+                    ? `Merge none (${mergeableCount})`
+                    : `${mergedCount} of ${mergeableCount} merged`}
+                </span>
+              </label>
+            )}
+          </div>
         )}
 
         <div className="px-4 pb-4 overflow-auto max-h-[60vh] space-y-2">
@@ -257,7 +312,7 @@ export function CutsDrawer({ slug, onClose, container }: Props) {
                   <div className="mt-1.5 flex items-center gap-3 flex-wrap">
                     <label className="flex items-center gap-1.5 text-sm">
                       <Checkbox checked={s.keep}
-                                onCheckedChange={(c) => update(i, { keep: !!c })} />
+                                onCheckedChange={(c) => setKeep(i, !!c)} />
                       keep
                     </label>
                     <label className="flex items-center gap-1.5 text-sm">
