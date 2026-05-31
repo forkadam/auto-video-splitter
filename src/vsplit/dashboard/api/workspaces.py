@@ -171,7 +171,8 @@ def open_preview(slug: str, request: Request) -> dict:
 def get_cuts(slug: str, request: Request) -> dict:
     root: Path = request.app.state.working_root
     _require_slug(root, slug)
-    cuts_path = workspace_dir(root, slug) / "decisions" / "cuts.json"
+    ws = workspace_dir(root, slug)
+    cuts_path = ws / "decisions" / "cuts.json"
     if not cuts_path.is_file():
         raise HTTPException(status_code=404, detail="cuts.json not yet written")
     raw = cuts_path.read_text()
@@ -182,13 +183,24 @@ def get_cuts(slug: str, request: Request) -> dict:
         # that field_validators put into ctx.
         raise HTTPException(status_code=422, detail=e.errors(include_context=False)) from e
     scene_ids = [s.id for s in parsed.scenes]
-    kf_path = workspace_dir(root, slug) / "probe" / "keyframes.csv"
+    kf_path = ws / "probe" / "keyframes.csv"
     keyframes = sorted(load_keyframes(kf_path)) if kf_path.is_file() else []
+    scenes_path = ws / "detect" / "scenes.json"
+    detected_count = (
+        len(json.loads(scenes_path.read_text()).get("scenes", []))
+        if scenes_path.is_file() else 0
+    )
+    try:
+        duration_seconds = load_manifest(ws).metadata.duration_seconds
+    except FileNotFoundError:
+        duration_seconds = None
     return {
         "cuts": json.loads(raw),
         "hash": content_hash(cuts_path),
         "scene_thumbs": _scene_thumbs(root, slug, scene_ids),
         "keyframes": keyframes,
+        "detected_count": detected_count,
+        "duration_seconds": duration_seconds,
     }
 
 

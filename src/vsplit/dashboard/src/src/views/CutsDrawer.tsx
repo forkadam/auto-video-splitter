@@ -22,6 +22,8 @@ type Loaded = {
   hash: string
   thumbs: Record<string, string>
   keyframes: number[]
+  detectedCount: number
+  durationSeconds: number | null
 }
 
 export function CutsDrawer({ slug, onClose, container }: Props) {
@@ -42,7 +44,7 @@ export function CutsDrawer({ slug, onClose, container }: Props) {
     api.workspaces.cuts.get(slug)
       .then((r) => {
         if (cancelled) return
-        setLoaded({ cuts: r.cuts, hash: r.hash, thumbs: r.scene_thumbs, keyframes: r.keyframes })
+        setLoaded({ cuts: r.cuts, hash: r.hash, thumbs: r.scene_thumbs, keyframes: r.keyframes, detectedCount: r.detected_count, durationSeconds: r.duration_seconds })
         setDraft(structuredClone(r.cuts))
         setError(null)
       })
@@ -145,6 +147,36 @@ export function CutsDrawer({ slug, onClose, container }: Props) {
     })
   }
 
+  const nextSceneId = (scenes: CutsBody["scenes"]) =>
+    scenes.length ? Math.max(...scenes.map((s) => s.id)) + 1 : 1
+
+  const addScene = (end: string) => setDraft((d) => {
+    if (!d) return d
+    const next = structuredClone(d)
+    next.scenes.push({
+      id: nextSceneId(next.scenes),
+      start: "00:00:00.000",
+      end,
+      keep: true,
+      label: null,
+      merge_with_next: false,
+    })
+    return next
+  })
+
+  const removeScene = (idx: number) => setDraft((d) => {
+    if (!d) return d
+    const next = structuredClone(d)
+    next.scenes.splice(idx, 1)
+    return next
+  })
+
+  // Manual-cut mode: only when detection found nothing. Then the user may add /
+  // remove rows and cut the whole clip; otherwise the drawer is read-structure.
+  const canEditRows = !!loaded && loaded.detectedCount === 0
+  const wholeClipEnd =
+    loaded?.durationSeconds != null ? formatTc(loaded.durationSeconds) : null
+
   const cancel = () => {
     if (isDirty && !window.confirm("Discard unsaved changes?")) return
     setForceOpen(false)
@@ -159,7 +191,7 @@ export function CutsDrawer({ slug, onClose, container }: Props) {
       const r = await api.workspaces.cuts.put(slug, {
         cuts: draft, expected_hash: loaded.hash,
       })
-      setLoaded({ cuts: structuredClone(draft), hash: r.hash, thumbs: loaded.thumbs, keyframes: loaded.keyframes })
+      setLoaded({ cuts: structuredClone(draft), hash: r.hash, thumbs: loaded.thumbs, keyframes: loaded.keyframes, detectedCount: loaded.detectedCount, durationSeconds: loaded.durationSeconds })
       return true
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
@@ -331,9 +363,42 @@ export function CutsDrawer({ slug, onClose, container }: Props) {
                     />
                   </div>
                 </div>
+                {canEditRows && (
+                  <button
+                    type="button"
+                    onClick={() => removeScene(i)}
+                    aria-label={`remove scene ${s.id}`}
+                    className="self-start text-muted-foreground hover:text-red-400 leading-none px-1"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
             )
           })}
+          {canEditRows && draft && draft.scenes.length === 0 && (
+            <div className="text-sm text-muted-foreground space-y-3 py-2">
+              <p>No scenes were detected. Cut the whole clip, or add time ranges manually.</p>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => addScene(wholeClipEnd!)} disabled={wholeClipEnd === null}>
+                  Cut whole clip
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => addScene(wholeClipEnd ?? "00:00:00.000")}>
+                  + Add range
+                </Button>
+              </div>
+            </div>
+          )}
+          {canEditRows && draft && draft.scenes.length > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-fit"
+              onClick={() => addScene(wholeClipEnd ?? "00:00:00.000")}
+            >
+              + Add range
+            </Button>
+          )}
         </div>
 
         <DrawerFooter className="flex-row justify-end gap-2">
@@ -341,7 +406,7 @@ export function CutsDrawer({ slug, onClose, container }: Props) {
           <Button variant="secondary" onClick={save} disabled={busy || !isDirty || hasErrors}>
             Save
           </Button>
-          <Button onClick={saveAndContinue} disabled={busy || hasErrors}>
+          <Button onClick={saveAndContinue} disabled={busy || hasErrors || keepCount === 0}>
             Save & continue
           </Button>
         </DrawerFooter>

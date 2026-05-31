@@ -50,11 +50,10 @@ type Detail = {
 }
 
 function NextPill({
-  ws, onOpenCuts, onOpenPreview,
+  ws, onOpenCuts,
 }: {
   ws: Workspace
   onOpenCuts: (s: string) => void
-  onOpenPreview: (s: string) => void
 }) {
   const a = nextAction(ws)
   const base = "px-2.5 py-1 rounded-md text-xs font-medium flex items-center gap-1.5"
@@ -78,7 +77,7 @@ function NextPill({
   const onClick = () => {
     if (a.kind === "retry") return void api.workspaces.run(ws.slug, { only: a.stage })
     if (a.kind === "review") return onOpenCuts(ws.slug)
-    if (a.kind === "empty") return onOpenPreview(ws.slug)
+    if (a.kind === "empty") return onOpenCuts(ws.slug)
     if (a.kind === "run") return void api.workspaces.run(ws.slug, {})
   }
   const tone =
@@ -89,7 +88,7 @@ function NextPill({
   return (
     <button type="button" onClick={onClick}
             title={a.kind === "empty"
-              ? "Detector found 0 scenes — click to open the preview and decide whether to lower the threshold + reset, or clean this workspace"
+              ? "Detector found 0 scenes — click to open the cut dialog: cut the whole clip or enter time ranges manually"
               : undefined}
             className={cn(base, "cursor-pointer transition-colors", tone)}>
       {a.label}
@@ -159,7 +158,7 @@ export function WorkspaceRow({
             {ws.output_count}
           </span>
         )}
-        <NextPill ws={ws} onOpenCuts={onOpenCuts} onOpenPreview={onOpenPreview} />
+        <NextPill ws={ws} onOpenCuts={onOpenCuts} />
         <Checkbox
           checked={selected}
           onCheckedChange={(c) => onSelectChange(ws.slug, !!c)}
