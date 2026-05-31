@@ -200,3 +200,22 @@ def test_put_cuts_writes_atomically_with_trailing_newline(tmp_path: Path) -> Non
     text = cuts_path.read_text()
     assert text.endswith("\n")
     assert "\r\n" not in text  # LF only (atomic_write_text guarantee)
+
+
+def test_get_cuts_includes_sorted_keyframes(tmp_path: Path) -> None:
+    ws = _seed(tmp_path, "alpha")
+    _seed_cuts(ws, scene_ids=[1, 2])
+    (ws / "probe").mkdir(parents=True, exist_ok=True)
+    # Out of order on disk; the API must return them ascending.
+    (ws / "probe" / "keyframes.csv").write_text("2.000\n0.000\n4.500\n")
+    client = TestClient(create_app(tmp_path))
+    body = client.get("/api/workspaces/alpha/cuts").json()
+    assert body["keyframes"] == [0.0, 2.0, 4.5]
+
+
+def test_get_cuts_keyframes_empty_when_csv_missing(tmp_path: Path) -> None:
+    ws = _seed(tmp_path, "alpha")
+    _seed_cuts(ws, scene_ids=[1])  # no probe/keyframes.csv written
+    client = TestClient(create_app(tmp_path))
+    body = client.get("/api/workspaces/alpha/cuts").json()
+    assert body["keyframes"] == []
