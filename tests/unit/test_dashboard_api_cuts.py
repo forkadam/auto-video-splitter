@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from vsplit.core.index import load_index, save_index
-from vsplit.core.manifest import new_manifest, save_manifest
+from vsplit.core.manifest import load_manifest, new_manifest, save_manifest
 from vsplit.core.paths import workspace_dir
 from vsplit.dashboard.server import create_app
 from vsplit.schemas.index import WorkspaceEntry
@@ -219,3 +219,48 @@ def test_get_cuts_keyframes_empty_when_csv_missing(tmp_path: Path) -> None:
     client = TestClient(create_app(tmp_path))
     body = client.get("/api/workspaces/alpha/cuts").json()
     assert body["keyframes"] == []
+
+
+def test_get_cuts_returns_detected_count_and_duration(tmp_path: Path) -> None:
+    ws = _seed(tmp_path, "alpha")
+    _seed_cuts(ws, scene_ids=[1, 2])
+    m = load_manifest(ws)
+    m.metadata.duration_seconds = 12.5
+    save_manifest(ws, m)
+    client = TestClient(create_app(tmp_path))
+    body = client.get("/api/workspaces/alpha/cuts").json()
+    assert body["detected_count"] == 2
+    assert body["duration_seconds"] == 12.5
+
+
+def test_get_cuts_detected_count_zero_when_no_scenes(tmp_path: Path) -> None:
+    ws = _seed(tmp_path, "alpha")
+    (ws / "detect").mkdir(parents=True, exist_ok=True)
+    (ws / "detect" / "scenes.json").write_text(
+        json.dumps({"schema_version": 1, "scenes": []}))
+    (ws / "decisions").mkdir(parents=True, exist_ok=True)
+    (ws / "decisions" / "cuts.json").write_text(
+        json.dumps({"schema_version": 1, "scenes": []}, indent=2) + "\n")
+    client = TestClient(create_app(tmp_path))
+    body = client.get("/api/workspaces/alpha/cuts").json()
+    assert body["detected_count"] == 0
+
+
+def test_put_cuts_allows_user_scene_when_no_scenes_detected(tmp_path: Path) -> None:
+    ws = _seed(tmp_path, "alpha")
+    (ws / "detect").mkdir(parents=True, exist_ok=True)
+    (ws / "detect" / "scenes.json").write_text(
+        json.dumps({"schema_version": 1, "scenes": []}))
+    (ws / "decisions").mkdir(parents=True, exist_ok=True)
+    (ws / "decisions" / "cuts.json").write_text(
+        json.dumps({"schema_version": 1, "scenes": []}, indent=2) + "\n")
+    client = TestClient(create_app(tmp_path))
+    initial = client.get("/api/workspaces/alpha/cuts").json()
+    user_cuts = {
+        "schema_version": 1,
+        "scenes": [{"id": 1, "start": "00:00:00.000", "end": "00:00:05.000",
+                    "keep": True, "label": None, "merge_with_next": False}],
+    }
+    r = client.put("/api/workspaces/alpha/cuts",
+                   json={"cuts": user_cuts, "expected_hash": initial["hash"]})
+    assert r.status_code == 200

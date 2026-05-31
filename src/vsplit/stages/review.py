@@ -110,6 +110,11 @@ class ReviewStage(Stage):
 
 
 def _validate_ids(parsed: CutsJson, detected_ids: set[int]) -> None:
+    # No scenes detected → the user authors cuts manually (whole-clip or manual
+    # ranges), so any scene ids are accepted. With detected scenes present we
+    # still keep cuts.json in sync (reject added/removed rows).
+    if not detected_ids:
+        return
     cuts_ids = {s.id for s in parsed.scenes}
     missing = detected_ids - cuts_ids
     extra = cuts_ids - detected_ids
