@@ -37,3 +37,48 @@ def test_clean_workspaces_removes_dir_and_retires_slug(tmp_path: Path) -> None:
 def test_clean_workspaces_silent_on_missing_slug(tmp_path: Path) -> None:
     count = clean_workspaces(tmp_path, ["does-not-exist"])
     assert count == 0
+
+
+def test_clean_keeps_entry_when_removal_fails(tmp_path: Path, monkeypatch) -> None:
+    """If a workspace dir can't be deleted (held open), keep its index entry —
+    don't silently orphan the folder by popping the row while files remain."""
+    import vsplit.core.actions as actions
+    _seed(tmp_path, "alpha")
+    _seed(tmp_path, "beta")
+    real = actions._robust_rmtree
+
+    def fake(path: Path) -> bool:
+        if path.name == "alpha":
+            return False  # simulate a stuck lock
+        return real(path)
+
+    monkeypatch.setattr(actions, "_robust_rmtree", fake)
+    count = clean_workspaces(tmp_path, ["alpha", "beta"])
+    assert count == 1  # only beta removed
+    idx = load_index(tmp_path)
+    assert "alpha" in idx.workspaces           # kept, not orphaned
+    assert "alpha" not in idx.retired_slugs
+    assert "beta" not in idx.workspaces
+    assert "beta" in idx.retired_slugs
+
+
+def test_robust_rmtree_retries_transient_lock(tmp_path: Path, monkeypatch) -> None:
+    import shutil
+    import vsplit.core.actions as actions
+    d = tmp_path / "d" / "sub"
+    d.mkdir(parents=True)
+    (d / "f.txt").write_text("x")
+    calls = {"n": 0}
+    real_rmtree = shutil.rmtree
+
+    def flaky(path, *a, **k):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise PermissionError("locked")
+        return real_rmtree(path, *a, **k)
+
+    monkeypatch.setattr(actions.shutil, "rmtree", flaky)
+    monkeypatch.setattr(actions.time, "sleep", lambda *_a: None)
+    assert actions._robust_rmtree(tmp_path / "d") is True
+    assert calls["n"] == 2
+    assert not (tmp_path / "d").exists()
