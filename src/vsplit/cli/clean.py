@@ -44,6 +44,12 @@ def clean_cmd(ctx, slug_glob, clean_all, filters, force):
     ):
         return
     removed = clean_workspaces(working_root, targets)
+    # A target still in the index after cleaning couldn't be deleted (a file is
+    # held open). Report it honestly instead of claiming it was cleaned.
+    still_present = set(load_index(working_root).workspaces)
     for slug in targets:
-        console.print(f"[green]cleaned[/]: {slug}")
+        if slug in still_present:
+            console.print(f"[yellow]kept[/] (in use — not deleted): {slug}")
+        else:
+            console.print(f"[green]cleaned[/]: {slug}")
     console.print(f"\n{removed} cleaned")
