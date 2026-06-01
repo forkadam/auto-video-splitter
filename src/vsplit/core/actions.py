@@ -2,6 +2,7 @@
 from __future__ import annotations
 import shutil
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
@@ -12,18 +13,48 @@ from vsplit.core.paths import workspace_dir
 from vsplit.schemas.config import Config
 from vsplit.schemas.manifest import STAGE_NAMES, StageBlock
 
+_RMTREE_RETRY_INITIAL = 0.05
+_RMTREE_RETRY_MAX = 6
+
+
+def _robust_rmtree(path: Path) -> bool:
+    """Remove a directory tree, retrying transient locks with backoff.
+
+    On Windows a file briefly held open (the dashboard watcher, AV, or a preview
+    still streaming) makes rmtree raise. Retry a few times (mirrors atomic.py's
+    _replace_with_retry). Returns True once the tree is gone, False if it still
+    couldn't be removed — so the caller can avoid orphaning it.
+    """
+    delay = _RMTREE_RETRY_INITIAL
+    for attempt in range(_RMTREE_RETRY_MAX):
+        try:
+            shutil.rmtree(path)
+            return True
+        except FileNotFoundError:
+            return True
+        except OSError:
+            if attempt == _RMTREE_RETRY_MAX - 1:
+                break
+            time.sleep(delay)
+            delay *= 2
+    return not path.exists()
+
 
 def clean_workspaces(working_root: Path, slugs: list[str]) -> int:
     """Delete each named workspace directory and retire its slug.
 
-    Returns the number of workspaces actually removed (silent skip for missing).
+    Returns the number actually removed (missing slugs are silently skipped). A
+    workspace whose directory cannot be deleted — e.g. a file is still held open
+    (the dashboard previewing it) — is LEFT in the index so its row stays
+    visible, rather than being silently orphaned on disk.
     """
     idx = load_index(working_root)
     removed = 0
     for slug in slugs:
         if slug not in idx.workspaces:
             continue
-        shutil.rmtree(workspace_dir(working_root, slug), ignore_errors=True)
+        if not _robust_rmtree(workspace_dir(working_root, slug)):
+            continue  # keep the index entry; don't silently orphan the folder
         idx.workspaces.pop(slug, None)
         if slug not in idx.retired_slugs:
             idx.retired_slugs.append(slug)
