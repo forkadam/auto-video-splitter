@@ -1,0 +1,156 @@
+{
+  "fixture": "vfr_hevc10.mov",
+  "fps_hint": 24.0,
+  "runs": {
+    "content": {
+      "detector": "content",
+      "threshold": 27.0,
+      "luma_only": false,
+      "min_scene_len_frames": 14,
+      "elapsed_ms": 117.36,
+      "scenes": [
+        {
+          "id": 1,
+          "start_time": 0.0,
+          "end_time": 2.0,
+          "start_frame": 0,
+          "end_frame": 47
+        },
+        {
+          "id": 2,
+          "start_time": 2.0,
+          "end_time": 4.0,
+          "start_frame": 47,
+          "end_frame": 94
+        },
+        {
+          "id": 3,
+          "start_time": 4.0,
+          "end_time": 5.9,
+          "start_frame": 94,
+          "end_frame": 138
+        }
+      ]
+    },
+    "content_luma": {
+      "detector": "content",
+      "threshold": 27.0,
+      "luma_only": true,
+      "min_scene_len_frames": 14,
+      "elapsed_ms": 81.22,
+      "scenes": [
+        {
+          "id": 1,
+          "start_time": 0.0,
+          "end_time": 2.0,
+          "start_frame": 0,
+          "end_frame": 47
+        },
+        {
+          "id": 2,
+          "start_time": 2.0,
+          "end_time": 4.0,
+          "start_frame": 47,
+          "end_frame": 94
+        },
+        {
+          "id": 3,
+          "start_time": 4.0,
+          "end_time": 5.9,
+          "start_frame": 94,
+          "end_frame": 138
+        }
+      ]
+    },
+    "adaptive": {
+      "detector": "adaptive",
+      "threshold": 3.0,
+      "luma_only": false,
+      "min_scene_len_frames": 14,
+      "elapsed_ms": 89.81,
+      "scenes": [
+        {
+          "id": 1,
+          "start_time": 0.0,
+          "end_time": 2.0,
+          "start_frame": 0,
+          "end_frame": 47
+        },
+        {
+          "id": 2,
+          "start_time": 2.0,
+          "end_time": 4.0,
+          "start_frame": 47,
+          "end_frame": 94
+        },
+        {
+          "id": 3,
+          "start_time": 4.0,
+          "end_time": 5.9,
+          "start_frame": 94,
+          "end_frame": 138
+        }
+      ]
+    },
+    "histogram": {
+      "detector": "histogram",
+      "threshold": 0.05,
+      "luma_only": false,
+      "min_scene_len_frames": 14,
+      "elapsed_ms": 80.14,
+      "scenes": [
+        {
+          "id": 1,
+          "start_time": 0.0,
+          "end_time": 2.0,
+          "start_frame": 0,
+          "end_frame": 47
+        },
+        {
+          "id": 2,
+          "start_time": 2.0,
+          "end_time": 4.0,
+          "start_frame": 47,
+          "end_frame": 94
+        },
+        {
+          "id": 3,
+          "start_time": 4.0,
+          "end_time": 5.9,
+          "start_frame": 94,
+          "end_frame": 138
+        }
+      ]
+    },
+    "hash": {
+      "detector": "hash",
+      "threshold": 0.395,
+      "luma_only": false,
+      "min_scene_len_frames": 14,
+      "elapsed_ms": 80.4,
+      "scenes": [
+        {
+          "id": 1,
+          "start_time": 0.0,
+          "end_time": 2.0,
+          "start_frame": 0,
+          "end_frame": 47
+        },
+        {
+          "id": 2,
+          "start_time": 2.0,
+          "end_time": 4.0,
+          "start_frame": 47,
+          "end_frame": 94
+        },
+        {
+          "id": 3,
+          "start_time": 4.0,
+          "end_time": 5.9,
+          "start_frame": 94,
+          "end_frame": 138
+        }
+      ]
+    }
+  }
+}

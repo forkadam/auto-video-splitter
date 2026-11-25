@@ -1,0 +1,134 @@
+{
+  "fixture": "short.mp4",
+  "fps_hint": 24.0,
+  "runs": {
+    "content": {
+      "detector": "content",
+      "threshold": 27.0,
+      "luma_only": false,
+      "min_scene_len_frames": 14,
+      "elapsed_ms": 431.41,
+      "scenes": [
+        {
+          "id": 1,
+          "start_time": 0.0,
+          "end_time": 2.0,
+          "start_frame": 0,
+          "end_frame": 48
+        },
+        {
+          "id": 2,
+          "start_time": 2.0,
+          "end_time": 4.0,
+          "start_frame": 48,
+          "end_frame": 96
+        },
+        {
+          "id": 3,
+          "start_time": 4.0,
+          "end_time": 5.0,
+          "start_frame": 96,
+          "end_frame": 120
+        }
+      ]
+    },
+    "content_luma": {
+      "detector": "content",
+      "threshold": 27.0,
+      "luma_only": true,
+      "min_scene_len_frames": 14,
+      "elapsed_ms": 59.63,
+      "scenes": [
+        {
+          "id": 1,
+          "start_time": 0.0,
+          "end_time": 2.0,
+          "start_frame": 0,
+          "end_frame": 48
+        },
+        {
+          "id": 2,
+          "start_time": 2.0,
+          "end_time": 4.0,
+          "start_frame": 48,
+          "end_frame": 96
+        },
+        {
+          "id": 3,
+          "start_time": 4.0,
+          "end_time": 5.0,
+          "start_frame": 96,
+          "end_frame": 120
+        }
+      ]
+    },
+    "adaptive": {
+      "detector": "adaptive",
+      "threshold": 3.0,
+      "luma_only": false,
+      "min_scene_len_frames": 14,
+      "elapsed_ms": 84.24,
+      "scenes": [
+        {
+          "id": 1,
+          "start_time": 0.0,
+          "end_time": 2.0,
+          "start_frame": 0,
+          "end_frame": 48
+        },
+        {
+          "id": 2,
+          "start_time": 2.0,
+          "end_time": 4.0,
+          "start_frame": 48,
+          "end_frame": 96
+        },
+        {
+          "id": 3,
+          "start_time": 4.0,
+          "end_time": 5.0,
+          "start_frame": 96,
+          "end_frame": 120
+        }
+      ]
+    },
+    "histogram": {
+      "detector": "histogram",
+      "threshold": 0.05,
+      "luma_only": false,
+      "min_scene_len_frames": 14,
+      "elapsed_ms": 73.77,
+      "scenes": [
+        {
+          "id": 1,
+          "start_time": 0.0,
+          "end_time": 2.0,
+          "start_frame": 0,
+          "end_frame": 48
+        },
+        {
+          "id": 2,
+          "start_time": 2.0,
+          "end_time": 4.0,
+          "start_frame": 48,
+          "end_frame": 96
+        },
+        {
+          "id": 3,
+          "start_time": 4.0,
+          "end_time": 5.0,
+          "start_frame": 96,
+          "end_frame": 120
+        }
+      ]
+    },
+    "hash": {
+      "detector": "hash",
+      "threshold": 0.395,
+      "luma_only": false,
+      "min_scene_len_frames": 14,
+      "elapsed_ms": 124.74,
+      "scenes": []
+    }
+  }
+}

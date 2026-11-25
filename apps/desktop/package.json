@@ -1,0 +1,14 @@
+{
+  "name": "vsplit-desktop",
+  "private": true,
+  "version": "0.4.0-alpha.0",
+  "scripts": {
+    "tauri": "tauri",
+    "stage-cli": "node scripts/stage-cli.mjs",
+    "build:frontend": "bun --cwd ../../frontend run build",
+    "build": "bun run build:frontend && bun run stage-cli && bun run tauri build --config src-tauri/tauri.bundle.conf.json"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.5.0"
+  }
+}

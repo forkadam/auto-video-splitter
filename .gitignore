@@ -9,3 +9,9 @@ build/
 .vsplit/
 .superpowers/
 uv.lock
+target/
+apps/desktop/node_modules/
+apps/desktop/src-tauri/gen/
+apps/desktop/src-tauri/binaries/
+frontend/dist/
+frontend/node_modules/

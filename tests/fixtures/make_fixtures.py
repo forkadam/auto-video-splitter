@@ -34,6 +34,21 @@ def main() -> None:
         "-c:v", "libx264", "-pix_fmt", "yuv420p",
         str(out),
     ])
+    # 6-second 10-bit HEVC VFR .mov with 3 visually distinct textured scenes
+    # (exercises 10-bit HEVC decode, B-frames, VFR timestamps, and all 4 detectors).
+    out = FIXTURES / "vfr_hevc10.mov"
+    run([
+        "ffmpeg", "-y",
+        "-f", "lavfi", "-i",
+        "testsrc2=size=640x360:duration=2:rate=30,setpts=PTS*1.0[a];"
+        "smptehdbars=size=640x360:duration=2:rate=24,setpts=PTS*1.0[b];"
+        "rgbtestsrc=size=640x360:duration=2:rate=15,setpts=PTS*1.0[c];"
+        "[a][b][c]concat=n=3:v=1:a=0",
+        "-fps_mode", "vfr",
+        "-c:v", "libx265", "-pix_fmt", "yuv420p10le",
+        "-tag:v", "hvc1", "-x265-params", "log-level=error:bframes=3:keyint=30",
+        str(out),
+    ])
 
 
 if __name__ == "__main__":

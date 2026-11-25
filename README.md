@@ -1,547 +1,178 @@
 # vsplit
 
-Local, scene-aware video splitter with a human review gate. Built for batches of personal video on Windows/macOS.
+Local, scene-aware video splitter with a native desktop app (**Windows** & **Linux / Arch Omarchy Hyprland**) and an **AI-agent-ready CLI**.
 
-vsplit walks a folder of clips, detects scene boundaries (PySceneDetect), generates a thumbnail-driven HTML preview per clip, and waits for you to mark which scenes to keep before losslessly stream-copying each kept scene into its own output file via FFmpeg. Everything is resumable, failure-isolated, and manifest-driven.
-
----
-
-## What it's good for
-
-- A folder of **pre-edited or concatenated** videos (camcorder dumps, screen recordings with hard cuts, vlogs spliced from multiple shots) that you want broken back into the individual clips.
-- Curating dozens-to-hundreds of clips at a time without re-encoding.
-- Batch workflows where one clip failing shouldn't block the others.
-
-## What it's NOT good for
-
-- **A single continuous handheld shot** with no scene cuts (e.g., a 10-second iPhone clip of someone talking). There are no visual discontinuities for a pixel-based detector to find. Tools like [LosslessCut](https://losslesscut.app/) are better for manual point-and-shoot trimming.
-- Detecting "interesting moments" by audio/motion. vsplit's detectors are all pixel-based.
+`vsplit` scans folders of video clips, detects scene boundaries in pure Rust over an FFmpeg PPM pipe (`content`, `adaptive`, `histogram`, `hash`), renders thumbnail + H.264 proxy previews, pauses at a human review gate (`decisions/cuts.json`), and losslessly stream-copies kept scenes via FFmpeg (`-c copy`). Desktop and CLI operate directly on the same `.vsplit/` directory with OS file locks and live two-way sync.
 
 ---
 
 ## Install
 
-Prerequisites: Python 3.11+, [uv](https://github.com/astral-sh/uv), FFmpeg ≥ 5, FFprobe (both on PATH).
+### Prerequisites
+External `ffmpeg` and `ffprobe` (with `libx264` and `aac` encoders):
+- **Windows:** `winget install Gyan.FFmpeg`
+- **Arch Linux / Omarchy:** `sudo pacman -S ffmpeg gst-libav gst-plugins-good gst-plugins-bad fuse2`
+
+Run `vsplit doctor` (or open **Doctor** in the desktop app) to verify FFmpeg, encoders, Linux GStreamer H.264 playback, `PATH` shadowing, and active workspace locks. Custom binary paths can also be configured in machine-local `app.toml`.
+
+### Prebuilt Releases (GUI + CLI in Lockstep)
+Download from [GitHub Releases](https://github.com/forkadam/auto-video-splitter/releases):
+- **Windows (`x86_64`):** Run `vsplit_<version>_x64-setup.exe` (per-user NSIS install into `%LOCALAPPDATA%\vsplit\`, bundling both `vsplit-desktop.exe` and console `vsplit.exe` and adding `%LOCALAPPDATA%\vsplit\` to user `PATH`).
+- **Linux / Arch Omarchy (`x86_64`):** Make `vsplit_<version>_amd64.AppImage` executable and launch it. On first launch (and after every one-click update), `vsplit-desktop` atomically extracts the co-versioned CLI to `~/.local/share/vsplit/bin/vsplit-<version>` and links `~/.local/bin/vsplit` so CLI commands run natively in `< 20 ms` with zero AppImage FUSE startup cost.
+
+One-click updates are delivered via signed GitHub Releases (`tauri-plugin-updater` checking `releases/latest/download/latest.json`).
+
+### Build From Source
+Prerequisites: Rust stable toolchain, [Bun](https://bun.sh/), FFmpeg/FFprobe (and `libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf` on Linux).
 
 ```bash
-uv venv
-uv pip install -e ".[dev]"
-uv run vsplit --help
-```
+# CLI only
+cargo build -p vsplit-cli --release
 
-To regenerate the test fixtures (one-time):
-
-```bash
-uv run python tests/fixtures/make_fixtures.py
+# Full desktop app + installer (builds frontend, stages CLI sidecar, bundles NSIS/AppImage)
+cd apps/desktop
+bun install
+bun run build
 ```
 
 ---
 
-## Quick start
+## Quick Start
+
+### Desktop App
+Launch `vsplit`, pick or drag-and-drop a video folder (or drop a single clip to adopt it directly), click **Scan**, run `probe → detect → preview → review`, scrub the inline preview, adjust scenes in the Cuts Drawer, and click **Save & continue**.
+
+### CLI & AI-Agent Automation
+Every CLI subcommand supports `--json`, deterministic exit codes, unified `--filter`, and non-interactive fail-fast behavior when `stdin` is not a TTY:
 
 ```bash
-cd ~/vacation-clips
+# 1. Verify toolchain
+vsplit --json doctor
 
-# 1. Adopt every recognized video file as a workspace.
-uv run vsplit scan
+# 2. Scan folder and inspect compact status (<3,000 tokens for 100 clips)
+vsplit -w ./clips --json scan --auto-relocate
+vsplit -w ./clips --json status
 
-# 2. Detect scenes + render previews + open at the review gate.
-uv run vsplit run --through preview
+# 3. Run through the review gate (exits 10 when workspaces pause at awaiting_user)
+vsplit -w ./clips --json run --through review
 
-# 3. For each clip, open the preview and decide:
-open .vsplit/workspaces/*/preview/index.html
-# Edit decisions/cuts.json — set "keep": false on scenes you don't want.
+# 4. Inspect and atomically update cuts.json with optimistic SHA-256 locking
+vsplit -w ./clips --json cuts get my-clip
+vsplit -w ./clips --json cuts set my-clip --file edited_cuts.json --expected-hash <sha256>
 
-# 4. Approve and continue.
-uv run vsplit approve "*"
-uv run vsplit run
-
-# 5. Your clips:
-ls .vsplit/workspaces/*/output/
+# 5. Approve (if cuts.json unchanged), finish lossless split + verify, and collect outputs
+vsplit -w ./clips --json approve "*"
+vsplit -w ./clips --json run
+vsplit -w ./clips --json collect --dest ./collected --mode copy
 ```
-
-### Single-file shortcut
-
-```bash
-uv run vsplit one Birthday.mov              # adopt + preview, opens browser
-uv run vsplit one Birthday.mov --auto-approve   # skip review, run end-to-end
-```
-
-`one` registers exactly the file you point at — it does **not** scan the rest of the folder.
 
 ---
 
-## The 7 stages
+## Global Options & Exit Codes
 
-Each clip flows through a fixed pipeline. Status of each stage is tracked per workspace in `manifest.json`.
-
-| # | Stage     | Reads                            | Writes                                             | Notes                                                                  |
-|---|-----------|----------------------------------|----------------------------------------------------|------------------------------------------------------------------------|
-| 1 | `probe`   | source                           | `probe/ffprobe.json`, `probe/keyframes.csv`        | Metadata + keyframe list.                                              |
-| 2 | `detect`  | source                           | `detect/scenes.json`                                | PySceneDetect; detector chosen by config.                              |
-| 3 | `preview` | `detect/scenes.json`, source     | `preview/index.html`, `preview/images/*.jpg`, `preview/source-proxy.mp4` | Thumbs + browser-playable H.264 proxy (so iPhone HEVC plays in Chrome). |
-| 4 | `review`  | `detect/scenes.json`             | `decisions/cuts.json`                              | **Gate.** Status becomes `awaiting_user` until edits or `approve`.     |
-| 5 | `plan`    | `decisions/cuts.json`, `probe/keyframes.csv` | `plan/cuts-resolved.json`                          | Snaps each scene start to preceding keyframe.                          |
-| 6 | `split`   | `plan/cuts-resolved.json`, source | `output/*.mp4`                                      | `ffmpeg -c copy` — lossless, no re-encode.                              |
-| 7 | `verify`  | output                           | `manifest.stages.verify.artifacts.report`           | ffprobe sanity-checks each output file.                                |
-
-Per-stage status: `pending` → `running` → `done` | `failed` | `awaiting_user` | `skipped`.
-
----
-
-## Global options (must come before the subcommand)
-
-```
-uv run vsplit [GLOBAL OPTIONS] <command> [COMMAND OPTIONS]
+```text
+vsplit [GLOBAL OPTIONS] <COMMAND> [ARGS]
 ```
 
-| Option | Default | Purpose |
+| Global Option | Default | Purpose |
 |---|---|---|
-| `--working-dir`, `-w PATH` | `.` | Folder containing your source videos (becomes the "working root"). Resolved to absolute. |
-| `--config PATH` | none | Explicit config file path. Highest-priority layer in resolution chain. Errors if missing. |
-| `--log-level {debug,info,warn,error}` | `info` | Reserved; per-stage logs always written to `<workspace>/logs/<stage>.log` regardless. |
-| `--json` | off | Forces JSON output where supported (`status` honors this). |
-| `--version` | — | Print version and exit. |
-| `--help` | — | Show help for any command. |
+| `-w, --working-dir PATH` | `.` | Folder containing source clips and `.vsplit/` |
+| `--config PATH` | none | Explicit pipeline `config.yaml` override (never overrides `app.toml`) |
+| `--json` | off | Emit single-object JSON (`{"ok": true, ...}` / `{"ok": false, "code": ..., "message": ..., "details": ...}`) on stdout |
+| `--non-interactive` | off | Never prompt on stdin; fail fast with exit code `2` (also automatic when stdin is not a TTY) |
+| `--log-level` | `warn` | Stderr log verbosity (`debug`, `info`, `warn`, `error`) |
 
-Example combining global + subcommand options:
-
-```bash
-uv run vsplit -w "D:\vacation\japan-2025" --json status --awaiting-user
-```
-
----
-
-## Commands
-
-| Command | Purpose |
+| Exit Code | Meaning |
 |---|---|
-| `vsplit scan [path]` | Discover and adopt video files |
-| `vsplit run [filter]` | Advance pipelines |
-| `vsplit status` | Show pipeline progress |
-| `vsplit approve <filter>` | Mark workspaces past the review gate |
-| `vsplit reset <filter> --from <stage>` | Re-run stages |
-| `vsplit clean <filter>` | Delete workspace state (source files untouched) |
-| `vsplit one <file>` | Single-file shortcut |
-| `vsplit dashboard [--port N]` | Launch the local web dashboard |
-
-### `scan [PATH]`
-
-Walks the working root looking for video files; adopts any new ones (creates workspace + manifest + index entry). Idempotent — files already in the index by hash are silently skipped.
-
-| Option | Default | What it does |
-|---|---|---|
-| `PATH` (positional) | `--working-dir` | Override the directory to scan for this invocation. |
-| `--recursive/--no-recursive` | from config (`scan.recursive: false`) | Walk subdirectories too. |
-| `--dry-run` | off | Report what would be adopted without writing anything. |
-| `--auto-relocate` | off | When a file's hash matches an existing workspace but the path differs (you renamed/moved the source), update the pointer without prompting. Default is to ask. |
-
-**File-extension filter** comes from config (`scan.extensions`). Defaults: `mp4, mkv, mov, avi, m4v, webm`.
-
-**Edge cases handled:** files inside `.vsplit/` are always skipped; rename detection via partial-hash; replaced-file warning if path matches but hash differs; long-path warning if projected workspace path exceeds 240 chars (Windows MAX_PATH safety).
-
-```bash
-uv run vsplit scan
-uv run vsplit scan ~/Movies/raw --recursive
-uv run vsplit scan --dry-run                    # see what would happen
-uv run vsplit scan --auto-relocate              # bulk-update paths after moving files
-```
+| `0` | Success |
+| `1` | Runtime or pipeline stage failure |
+| `2` | Usage, schema validation, filter, hash mismatch, or non-interactive confirmation error |
+| `3` | Workspace locked by another running `vsplit` or `vsplit-desktop` process (`WORKSPACE_LOCKED`) |
+| `4` | Missing external dependency (`ffmpeg` / `ffprobe` / encoders) |
+| `10` | One or more workspaces paused at `review` (`awaiting_user`) |
+| `130` | Interrupted by signal (`SIGINT`) |
 
 ---
 
-### `run [SLUG_GLOB]`
+## CLI Commands
 
-Advances workspaces through the pipeline. Runs the orchestrator: per-stage concurrency limits, crash recovery, failure isolation.
-
-| Option | Default | What it does |
-|---|---|---|
-| `SLUG_GLOB` (positional) | none | fnmatch-style slug filter (e.g., `"vacation-*"`). Shorthand for `--filter slug=...`. |
-| `--only STAGE` | none | Run **only** this stage. Mutually exclusive with `--from`/`--through`. |
-| `--from STAGE` | first stage | Start from this stage (inclusive). |
-| `--through STAGE` | last stage | Stop after this stage (inclusive). |
-| `--filter K=V` | none | Subset of workspaces (see [Filter grammar](#filter-grammar)). Repeat to AND. |
-| `--concurrency STAGE=N` | from config | Override concurrency for a stage. Repeat for multiple. Example: `--concurrency split=4`. |
-| `--dry-run` | off | Print what would run; no manifests touched. |
-
-`STAGE` is one of: `probe`, `detect`, `preview`, `review`, `plan`, `split`, `verify`.
-
-```bash
-uv run vsplit run                                # advance every workspace as far as it can go
-uv run vsplit run --through preview              # stop before the review gate
-uv run vsplit run --filter status=awaiting_user  # only ones waiting on user
-uv run vsplit run "birthday-*" --from plan       # re-run plan/split/verify on matching workspaces
-uv run vsplit run --only detect                  # just re-detect (e.g., after threshold change)
-uv run vsplit run --concurrency split=4          # 4 ffmpegs in parallel for split
-```
-
-Ctrl-C requests a clean shutdown: in-flight stages finish, then the run exits 130. Unfinished workspaces stay `pending` and resume cleanly next time.
-
----
-
-### `status [SLUG]`
-
-Renders a table of every workspace's stage statuses. With `--json` (the global flag) emits a machine-readable manifest dump.
-
-| Option | What it does |
+| Command | Description |
 |---|---|
-| `SLUG` (positional) | Limit to exactly this workspace (exact match, no glob). |
-| `--awaiting-user` | Only workspaces with at least one stage in `awaiting_user`. |
-| `--failed` | Only workspaces with at least one stage in `failed`. |
+| `vsplit scan [PATH]` | Adopt videos (`--recursive/--no-recursive`, `--auto-relocate/--no-relocate`, `--dry-run`) |
+| `vsplit status [SLUG]` | Compact pipeline status (`--awaiting-user`, `--failed`, `--full`) |
+| `vsplit run [SLUG_GLOB]` | Advance stages (`--only`, `--from`, `--through`, `--filter K=V`, `--concurrency S=N`, `--dry-run`) |
+| `vsplit approve [SLUG_GLOB]` | Approve `awaiting_user` workspaces (`--filter K=V`) |
+| `vsplit ignore / unignore [SLUG_GLOB]` | Park or unpark workspaces (`--filter K=V`) |
+| `vsplit reset [SLUG_GLOB]` | Reset stages (`--from STAGE` or `--all`, `--filter K=V`, `--force`) |
+| `vsplit clean [SLUG_GLOB]` | Delete workspace state without touching source videos (`--all`, `--filter K=V`, `--force`) |
+| `vsplit collect [SLUG_GLOB...]` | Gather `split=done` outputs (`--dest/--to`, `--mode copy\|move\|link`, `--force`, `--dry-run`) |
+| `vsplit one FILE_PATH` | Adopt & process a single clip without scanning siblings (`--through`, `--auto-approve`) |
+| `vsplit cuts get <SLUG>` / `set <SLUG>` | Read or validate+write `decisions/cuts.json` (`--file -\|PATH`, `--expected-hash <sha256>`) |
+| `vsplit logs <SLUG> <STAGE>` | Read per-stage logs (`--tail N`) |
+| `vsplit doctor` | Verify FFmpeg, FFprobe, encoders, Linux GStreamer/fuse2, CLI shim, PATH shadowing, and locks |
 
+Unified `--filter` predicates (AND-combined when repeated): `slug=<glob>`, `status=<pending|running|done|failed|awaiting_user|skipped>`, `stage=<probe|detect|preview|review|plan|split|verify>`.
+
+---
+
+## The 7 Pipeline Stages
+
+| # | Stage | Writes | Notes |
+|---|---|---|---|
+| 1 | `probe` | `probe/ffprobe.json`, `probe/keyframes.csv` | Stream metadata + keyframe PTS list |
+| 2 | `detect` | `detect/scenes.json` | Pure-Rust FFmpeg PPM-pipe detector (`content`, `adaptive`, `histogram`, `hash`) |
+| 3 | `preview` | `preview/index.html`, `preview/images/*.jpg`, `preview/source-proxy.mp4` | Thumbnails (`yuvj420p`) + playable H.264 proxy (`yuv420p`) |
+| 4 | `review` | `decisions/cuts.json` | Human/agent gate (`awaiting_user` until edited or approved; supports `cuts.json.template`) |
+| 5 | `plan` | `plan/cuts-resolved.json` | Keyframe snapping (`nearest_preceding`), adjacent `merge_with_next`, label sanitization |
+| 6 | `split` | `output/*.mp4` | Lossless `ffmpeg -map 0 -map -0:d -c copy -avoid_negative_ts make_zero` |
+| 7 | `verify` | `manifest.stages.verify.artifacts.report` | FFprobe output duration check against `duration_tolerance_seconds` |
+
+---
+
+## Configuration & Cross-OS Files
+
+- **Pipeline config (`config.yaml`):** 4-layer deep merge: built-in defaults → user-global (`~/.config/vsplit/config.yaml` on Linux; `%APPDATA%\vsplit\config.yaml` on Windows, with read-only fallback to legacy `%LOCALAPPDATA%\vsplit\vsplit\config.yaml`) → project `.vsplit/config.yaml` → explicit `--config`.
+- **Desktop settings (`app.toml`, outside `.vsplit/`):** `~/.config/vsplit/app.toml` (Linux) / `%APPDATA%\vsplit\app.toml` (Windows) storing `recent_folders`, `last_folder`, `ffmpeg_path`, `ffprobe_path`, and `wayland_disable_dmabuf`.
+- **Two-way sync & locking:** Cooperating GUI and CLI processes synchronize via exclusive OS locks (`flock` / `LockFileEx`) on `.vsplit/.locks/index.lock` and `.vsplit/.locks/<slug>.lock` paired with readable `.vsplit/.locks/<slug>.lease.json` sidecars and a non-recursive debounced `notify` watcher.
+- **Wayland Hyprland note:** If WebKitGTK renders a blank pane on your GPU driver, enable **"Disable WebKitGTK DMABUF renderer on Wayland"** in Configuration (persisted to `app.toml`) or launch with `VSPLIT_DISABLE_DMABUF=1`.
+
+---
+
+## Workspace Layout & Development
+
+- `crates/vsplit-core` — Shared Rust pipeline, v1 schemas, locking, toolchain, 4 detectors, 7 stages, watcher
+- `crates/vsplit-cli` — Standalone native `vsplit` CLI binary (links only `vsplit-core`)
+- `crates/vsplit-server` — Embedded `axum` loopback HTTP/SSE/HTTP 206 media server (linked only by `vsplit-desktop`)
+- `apps/desktop` — Tauri v2 desktop shell, NSIS hooks, Linux AppImage CLI shim, and updater
+- `frontend` — React 19 + TypeScript + Vite 8 + Tailwind v4 + shadcn/ui interface
+
+Run full checks locally:
 ```bash
-uv run vsplit status
-uv run vsplit status --awaiting-user
-uv run vsplit status birthday-2024
-uv run vsplit --json status > snapshot.json     # JSON for tooling
+python3 tests/fixtures/make_fixtures.py
+cd frontend && bun install && bun run build && bun run lint && bunx tsc -b && cd ..
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
 ```
 
----
-
-### `approve [SLUG_GLOB]`
-
-Marks workspaces past the review gate without requiring you to edit `cuts.json`. Writes `approved_at` into the review-stage artifacts. The next `vsplit run` notices this and advances `review → done`.
-
-| Option | What it does |
-|---|---|
-| `SLUG_GLOB` (positional) | fnmatch-style slug filter. |
-| `--filter K=V` | Subset filter (only `status` and `slug` keys honored here — `stage` is silently ignored in this command). |
-
-Skips workspaces whose `review` stage isn't currently `awaiting_user`.
-
-```bash
-uv run vsplit approve "*"                       # approve everything
-uv run vsplit approve "birthday-*"              # all matching slugs
-uv run vsplit approve --filter status=awaiting_user
-uv run vsplit approve hike-2024-08              # exact slug
-```
-
----
-
-### `reset [SLUG_GLOB]`
-
-Re-pends stages so they run again. Deletes their on-disk artifacts.
-
-| Option | What it does |
-|---|---|
-| `SLUG_GLOB` (positional) | fnmatch-style slug filter. |
-| `--from STAGE` | Reset STAGE and every stage after it. **One of `--from` or `--all` is required.** |
-| `--all` | Reset every stage (probe → verify). |
-| `--filter K=V` | Subset filter. Repeat to AND. |
-| `--force` | Skip the confirmation prompt that `--all` triggers. |
-
-`STAGE` is one of: `probe`, `detect`, `preview`, `review`, `plan`, `split`, `verify`.
-
-Use this after changing config (re-detect with new threshold), re-opening the review gate, or recovering from corruption.
-
-```bash
-uv run vsplit reset birthday-2024 --from detect       # changed detector? re-run from detect on
-uv run vsplit reset "*" --from review                 # re-open review for everything
-uv run vsplit reset --all --force                     # nuclear: every stage of every workspace
-uv run vsplit reset --filter status=failed --from probe   # retry failed ones from scratch
-```
-
----
-
-### `clean [SLUG_GLOB]`
-
-Permanently deletes workspace state. **Source files are never touched** — only the contents of `.vsplit/`.
-
-| Option | What it does |
-|---|---|
-| `SLUG_GLOB` (positional) | fnmatch-style slug filter. |
-| `--all` | Delete every workspace. |
-| `--filter K=V` | Subset filter. Repeat to AND. |
-| `--force` | Skip the confirmation prompt. |
-
-Cleaned slugs go into `index.retired_slugs` so they won't be re-allocated on next `scan` — re-adopting the same file gets a `-2`, `-3`, etc. suffix. To allow reuse, hand-edit `.vsplit/index.json` and clear the `retired_slugs` array.
-
-```bash
-uv run vsplit clean --filter status=done --force      # remove everything fully processed
-uv run vsplit clean "test-*" --force                  # remove test workspaces
-uv run vsplit clean --all --force                     # nuke everything (sources safe)
-```
-
----
-
-### `one FILE_PATH`
-
-End-to-end shortcut for a single file. Adopts **only** that file (no folder walk), runs through preview, opens the browser, optionally auto-approves and finishes.
-
-| Option | Default | What it does |
-|---|---|---|
-| `FILE_PATH` (positional, required) | — | Path to a single video file. |
-| `--through STAGE` | `preview` | Run through this stage and stop. |
-| `--auto-approve` | off | Skip the review gate: run through review, write `approved_at`, finish to verify. |
-
-```bash
-uv run vsplit one IMG_1754.MOV                       # preview + open browser
-uv run vsplit one IMG_1754.MOV --through detect      # just detect scenes
-uv run vsplit one IMG_1754.MOV --auto-approve        # end-to-end with default keep=true
-```
-
-Sets the working dir to the file's parent for this invocation (so output lands at `<parent>/.vsplit/workspaces/<slug>/`).
-
----
-
-### `dashboard`
-
-Launches a localhost web UI for managing workspaces, running commands in bulk, and editing config.
-
-| Option | Default | What it does |
-|---|---|---|
-| `--port N` | 8765 | TCP port to bind. Must be free. |
-| `--host ADDR` | 127.0.0.1 | Bind address. Localhost-only by default; do not expose. |
-| `--no-open` | off | Skip auto-opening the browser. |
-
-```bash
-uv run vsplit dashboard
-# Opens http://127.0.0.1:8765 in your default browser.
-```
-
-Features:
-- Hybrid collapsible list of every workspace; per-stage status pips.
-- Per-row actions: Run, Reset (with stage picker), Clean (confirms), Approve.
-- Bulk selection + filter bar (status/stage/slug glob mirrors CLI grammar).
-- Inline log viewer for failed stages — click a red pip to open the log drawer.
-- Config drawer: structured form for common fields + collapsible raw YAML pane.
-- Live status updates via Server-Sent Events (no manual refresh).
-
-Out of scope for v1: inline `cuts.json` editor (use your text editor), multi-user
-or LAN access, mobile layouts, light theme.
-
----
-
-## Filter grammar
-
-Three commands accept `--filter key=value` (`run`, `reset`, `clean`). The grammar is deliberately small: AND-only, no OR/negation/nesting.
-
-```
-key   ∈ { slug, status, stage }
-value : a literal string interpreted per-key
-```
-
-- `slug=PATTERN` — fnmatch glob over slugs. Same as the bare positional argument.
-  Examples: `slug=birthday-*`, `slug=*2024*`, `slug=hike-2024-08`.
-- `status=VALUE` — workspace has **any** stage in this status.
-  Values: `pending`, `running`, `done`, `failed`, `awaiting_user`, `skipped`.
-- `stage=NAME` — workspace's *next* non-done stage is this one (i.e. "currently parked at NAME").
-  Values: `probe`, `detect`, `preview`, `review`, `plan`, `split`, `verify`.
-
-**Repeat `--filter` to AND multiple predicates.** Order doesn't matter; the bare positional `SLUG_GLOB` is just sugar for `--filter slug=...`.
-
-```bash
-# Workspaces parked at the review gate, slug starts with "vacation":
-uv run vsplit run --filter status=awaiting_user --filter slug=vacation-*
-
-# Same as above using the positional shortcut:
-uv run vsplit run "vacation-*" --filter status=awaiting_user
-
-# Clean only the failures from 2024:
-uv run vsplit clean --filter status=failed --filter slug=*-2024-* --force
-
-# Re-run from preview on everything currently parked at detect:
-uv run vsplit reset --filter stage=detect --from detect
-```
-
-Note: `approve` has a simpler inline parser (predates the shared grammar) that honors only `status=` and `slug=`.
-
----
-
-## Configuration
-
-Three layers, resolved in this order (later overrides earlier):
-
-1. Built-in defaults (Pydantic schema).
-2. `~/.config/vsplit/config.yaml` (POSIX) or `%APPDATA%\vsplit\config.yaml` (Windows) — per-user global.
-3. `<working_root>/.vsplit/config.yaml` — per-project.
-4. `--config PATH` — explicit override; errors if file is missing.
-
-Unknown keys raise validation errors loud and early. Below is **every** configurable field with its default.
-
-```yaml
-# .vsplit/config.yaml
-
-detect:
-  detector: content          # content | adaptive | histogram | hash
-  threshold: 27.0            # scale depends on the chosen detector (see below)
-  min_scene_length: 0.6      # seconds; shorter detected scenes are dropped
-  luma_only: false           # ignore chroma in content/adaptive (slight speedup)
-
-preview:
-  images_per_scene: 3        # thumbnails per scene; auto-1 for scenes <1.0s
-  image_width: 480           # pixels (height auto)
-  image_quality: 85          # 1-100, JPEG q (100=best)
-  proxy_height: 720          # H.264 proxy height; null/0 disables (saves disk + time)
-
-review:
-  default_keep: true         # initial value of "keep" for each scene in cuts.json
-                             # set false if you typically discard most scenes (curation mode)
-  auto_apply_template: true  # if working_root/cuts.json.template exists, apply on first review
-
-plan:
-  keyframe_snap: nearest_preceding   # only mode in v1
-  min_segment_length: 1.0    # seconds; shorter resolved segments are dropped from output
-
-split:
-  output_container: mp4      # output extension/container
-
-verify:
-  duration_tolerance_seconds: 0.5  # tolerance for output-vs-expected duration check
-
-scan:
-  extensions: [mp4, mkv, mov, avi, m4v, webm]
-  recursive: false           # walk subdirectories
-
-concurrency:
-  probe: 4
-  detect: 2
-  preview: 4
-  plan: 8
-  split: 1                   # serial by default; disk-I/O bound
-  verify: 4
-  # Note: "review" is intentionally absent — it runs synchronously.
-```
-
-### Detector choice guide
-
-The four detectors interpret `threshold` on **different scales** — changing detector usually means picking a new threshold.
-
-| Detector | Scale | Default in pyscenedetect | What it sees | Good for |
-|---|---|---|---|---|
-| `content` (default) | 0–100 | 27 | HSV/luma pixel deltas between adjacent frames | Hard cuts, edited footage |
-| `adaptive` | 0–10 | 3.0 | Rolling-average–normalized content deltas | Footage with slow lighting drift |
-| `histogram` | 0–1 | 0.05 | HSV-histogram chi-squared distance | Gradual transitions, handheld pan/lighting changes |
-| `hash` | 0–1 | 0.395 | Perceptual hash distance | Robust against minor noise/shake |
-
-Tuning rules:
-- **More scenes than you want?** Raise `threshold`.
-- **Fewer scenes than you want?** Lower `threshold`.
-- **Detector is missing the obvious boundary but firing on a weak one?** Try `histogram` (different math; often catches what content/adaptive miss on handheld clips).
-
-```yaml
-# For handheld iPhone footage with gradual lighting/framing transitions:
-detect:
-  detector: histogram
-  threshold: 0.15
-```
-
----
-
-## Editing `cuts.json`
-
-The review gate writes `decisions/cuts.json` per workspace. Format:
-
-```json
-{
-  "schema_version": 1,
-  "scenes": [
-    {
-      "id": 1,
-      "start": "00:00:00.000",
-      "end":   "00:00:03.033",
-      "keep": true,
-      "label": null,
-      "merge_with_next": false
-    },
-    {
-      "id": 2,
-      "start": "00:00:03.033",
-      "end":   "00:00:05.833",
-      "keep": false,
-      "label": null,
-      "merge_with_next": false
-    }
-  ]
-}
-```
-
-| Field | Purpose |
-|---|---|
-| `id` | Stable scene id from detector. Don't change; don't remove rows — use `keep:false` to drop a scene. |
-| `start`, `end` | `HH:MM:SS.fff` strings. You **can** edit these to refine boundaries; `plan` will snap `start` to the preceding keyframe. |
-| `keep` | `true` to include this scene in output, `false` to drop it. |
-| `label` | Optional human label. Becomes part of the output filename (`<slug>-highlight-NN-<label>.mp4`). Allowed: alphanumeric, `-`, `_` (sanitized to lowercase, repeated `-` collapsed). |
-| `merge_with_next` | `true` to fuse this scene into the next one (single output file spanning both). |
-
-**vsplit rejects** files with: bad timecode format, duplicate scene ids, missing or extra ids vs. what `detect/scenes.json` contains, unknown fields. You'll get a clear error pointing at the offending line.
-
-After editing and saving, the next `vsplit run` notices the content-hash changed and advances `review → done`, then continues into `plan` and `split`.
-
-### `cuts.json.template`
-
-If `<working_root>/cuts.json.template` exists, `review` applies it to first-time workspaces automatically and skips the gate. Useful for batch policies like "always drop scene 1 and the final 2 seconds." The template must have matching scene ids; mismatches fail loudly.
-
----
-
-## Files & directories
-
-```
-<working_root>/
-  IMG_1754.MOV                                 ← your source (never modified)
-  cuts.json.template                           ← optional, applied automatically
-  .vsplit/
-    config.yaml                                ← project-level config
-    index.json                                 ← workspace ledger + retired slugs
-    workspaces/
-      img-1754/
-        manifest.json                          ← per-workspace state of truth
-        probe/
-          ffprobe.json
-          keyframes.csv
-        detect/
-          scenes.json
-        preview/
-          index.html
-          source-proxy.mp4                     ← H.264 proxy for browser playback
-          images/
-            scene-001-01.jpg
-            ...
-        decisions/
-          cuts.json                            ← edit this
-        plan/
-          cuts-resolved.json
-        output/
-          img-1754-highlight-01.mp4            ← your final clips
-          img-1754-highlight-02-cake.mp4
-        logs/
-          <stage>.log                          ← one per stage run
-```
-
-### Slug rules
-
-- Lowercased filename stem.
-- Windows-reserved characters (`<>:"|?*\/`) and control chars stripped.
-- Spaces and underscores → hyphen; runs of hyphens collapsed.
-- Names matching reserved Windows device names (`CON`, `NUL`, `COM1`, `LPT1`, …) prefixed with `_`.
-- Truncated to 64 characters; empty results become `_unnamed`.
-- On collision (case-insensitive, includes retired slugs), `-2`, `-3`, … is appended (cap 99).
-
----
-
-## Troubleshooting
-
-**Preview thumbnails missing / `ff_frame_thread_encoder_init failed`** — Your source is 10-bit HEVC (iPhone default). vsplit forces 8-bit conversion in the filter chain, so this should be fixed; if you still see it, your ffmpeg build may be unusual — verify with `ffmpeg -version`.
-
-**Video player in the preview shows nothing** — Browsers can't decode HEVC reliably. The H.264 proxy (`preview/source-proxy.mp4`) is generated by default. If you've disabled it via `proxy_height: null`, click the "Source: …" link below the player to open the original in a system player like VLC.
-
-**Detector finds 0 scenes** — Your footage probably has no hard cuts (a single continuous shot). Try `detector: histogram` with `threshold: 0.15` for handheld clips. If still 0, the footage genuinely lacks scene boundaries; vsplit is the wrong tool.
-
-**Cut lands ~1s before the visual transition** — That's the keyframe-snap slack. Stream-copy can only cut at keyframes; we snap backward (lossless) rather than forward (would lose content). Inspect `cut at X → Y · detected Z (snapped back …)` in the preview header.
-
-**Run was interrupted (Ctrl-C, power loss, etc.)** — `vsplit run` will see `running` stages on next launch, call each stage's `recover()` to clean partials (or validate them in the case of `split`), and resume.
-
-**One workspace fails; rest of batch keeps going.** That's the design. `vsplit status --failed` shows you which ones; `vsplit reset --filter status=failed --from <stage>` retries.
-
----
-
-## Windows notes
-
-- Keep your working folder near the drive root — long paths can exceed Windows' 260-char MAX_PATH. The tool warns at scan time if the projected workspace path exceeds 240 chars.
-- Exclude the working folder from real-time antivirus scanning during heavy operations (split + verify spawn many ffprobe/ffmpeg subprocesses).
-- Source paths are stored relative to the working root; if you move the whole folder, paths still resolve. If you rename individual files, run `vsplit scan --auto-relocate`.
-
----
-
-## License
-
-(not yet)
+### Release Signing Setup
+1. Generate an Ed25519 signing keypair once (keep the private `.key` file outside the repo and never commit it):
+   - **Windows (PowerShell):**
+     ```powershell
+     cd apps/desktop
+     bun run tauri signer generate -w "$env:USERPROFILE\.tauri\vsplit.key"
+     ```
+   - **Linux / macOS:**
+     ```bash
+     cd apps/desktop
+     bun run tauri signer generate -w "$HOME/.tauri/vsplit.key"
+     ```
+2. Copy the contents of `vsplit.key.pub` into `apps/desktop/src-tauri/tauri.conf.json` under `plugins.updater.pubkey`.
+3. Add **Repository secrets** in GitHub (**Settings → Secrets and variables → Actions → Secrets tab → Repository secrets → New repository secret** — *not* Environment secrets):
+   - `TAURI_SIGNING_PRIVATE_KEY`: full contents of `vsplit.key` (on Windows PowerShell: `Get-Content -Raw "$env:USERPROFILE\.tauri\vsplit.key" | Set-Clipboard`).
+   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: the password you entered when generating the key (skip if you left it blank).
+4. Push a version tag to build and sign a Draft GitHub Release (Windows `x64` NSIS + Linux `x64` AppImage + `latest.json`):
+   ```bash
+   git tag v0.4.0-alpha.0
+   git push origin v0.4.0-alpha.0
+   ```

@@ -1,0 +1,22 @@
+[package]
+name = "vsplit-server"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+axum.workspace = true
+chrono.workspace = true
+futures-util.workspace = true
+rand.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yml.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+tracing.workspace = true
+vsplit-core = { path = "../vsplit-core" }
+
+[dev-dependencies]
+tempfile.workspace = true
