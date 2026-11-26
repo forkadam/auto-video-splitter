@@ -584,6 +584,7 @@ export default function App() {
       <ConfigDrawer
         open={configOpen}
         onOpenChange={setConfigOpen}
+        workingRoot={workingRoot}
         configRevision={configRevision}
       />
       <CollectDialog open={collectOpen} onOpenChange={setCollectOpen} />

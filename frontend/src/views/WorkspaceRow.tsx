@@ -180,19 +180,19 @@ export function WorkspaceRow({
         <div className="flex gap-0.5">
           {STAGES.map((s) => {
             const status = ws.stages[s] ?? "pending"
-            const isFailed = status === "failed"
+            const hasLog = status !== "pending" && status !== "skipped"
             return (
               <button
                 key={s}
                 type="button"
-                title={`${s}: ${status}${isFailed ? " (click to view log)" : ""}`}
-                onClick={isFailed ? () => onOpenLog(ws.slug, s) : undefined}
-                disabled={!isFailed}
+                title={`${s}: ${status}${hasLog ? " (click to view log)" : ""}`}
+                onClick={hasLog ? () => onOpenLog(ws.slug, s) : undefined}
+                disabled={!hasLog}
                 className={cn(
                   "w-2.5 h-2.5 rounded-sm",
                   STATUS_COLOR[status],
-                  isFailed && "cursor-pointer hover:ring-1 hover:ring-red-300",
-                  !isFailed && "cursor-default",
+                  hasLog && "cursor-pointer hover:ring-1 hover:ring-foreground/60",
+                  !hasLog && "cursor-default",
                 )}
               />
             )
