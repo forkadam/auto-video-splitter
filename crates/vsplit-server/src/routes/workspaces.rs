@@ -8,6 +8,7 @@ use axum::Json;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use vsplit_core::actions::{cuts_get, cuts_set};
+use vsplit_core::config::load_app_config;
 use vsplit_core::index::load_index;
 use vsplit_core::keyframes::load_keyframes;
 use vsplit_core::locks::{inspect_workspace_lock, LockActor};
@@ -232,38 +233,64 @@ pub async fn open_preview(
 ) -> Result<Json<Value>, ApiError> {
     let root = require_working_root(&state)?;
     require_indexed_slug(&root, &slug)?;
-    let preview_html = workspace_dir(&root, &slug)
-        .join("preview")
-        .join("index.html");
-    if !preview_html.is_file() {
-        return Err(ApiError::not_found("preview not generated yet"));
+    let ws = workspace_dir(&root, &slug);
+    let manifest = load_manifest(&ws)
+        .map_err(|_| ApiError::not_found(format!("workspace not found: {slug}")))?;
+
+    let source_video = root.join(&manifest.source.relative_path);
+    let proxy_video = ws.join("preview").join("source-proxy.mp4");
+    let target_path = if source_video.is_file() {
+        source_video
+    } else if proxy_video.is_file() {
+        proxy_video
+    } else {
+        return Err(ApiError::not_found("video file not found"));
+    };
+
+    let target = target_path.display().to_string();
+    let app_cfg = load_app_config().unwrap_or_default();
+    let custom_player = app_cfg.video_player.filter(|p| !p.as_os_str().is_empty());
+
+    if let Some(ref player) = custom_player {
+        let mut cmd = Command::new(player);
+        cmd.arg(&target_path);
+        apply_no_window_std(&mut cmd);
+        cmd.spawn().map_err(|e| {
+            ApiError::internal(format!(
+                "failed to launch video player '{}': {e}",
+                player.display()
+            ))
+        })?;
+    } else {
+        #[cfg(windows)]
+        {
+            let mut cmd = Command::new("cmd");
+            cmd.args(["/C", "start", "", &target]);
+            apply_no_window_std(&mut cmd);
+            cmd.spawn()
+                .map_err(|e| ApiError::internal(format!("failed to open video player: {e}")))?;
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let mut cmd = Command::new("xdg-open");
+            cmd.arg(&target_path);
+            apply_no_window_std(&mut cmd);
+            cmd.spawn()
+                .map_err(|e| ApiError::internal(format!("failed to open video player: {e}")))?;
+        }
+        #[cfg(target_os = "macos")]
+        {
+            let mut cmd = Command::new("open");
+            cmd.arg(&target_path);
+            apply_no_window_std(&mut cmd);
+            cmd.spawn()
+                .map_err(|e| ApiError::internal(format!("failed to open video player: {e}")))?;
+        }
     }
 
-    let target = preview_html.display().to_string();
-    #[cfg(windows)]
-    {
-        let mut cmd = Command::new("cmd");
-        cmd.args(["/C", "start", "", &target]);
-        apply_no_window_std(&mut cmd);
-        cmd.spawn()
-            .map_err(|e| ApiError::internal(format!("failed to open preview: {e}")))?;
-    }
-    #[cfg(target_os = "linux")]
-    {
-        let mut cmd = Command::new("xdg-open");
-        cmd.arg(&target);
-        apply_no_window_std(&mut cmd);
-        cmd.spawn()
-            .map_err(|e| ApiError::internal(format!("failed to open preview: {e}")))?;
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let mut cmd = Command::new("open");
-        cmd.arg(&target);
-        apply_no_window_std(&mut cmd);
-        cmd.spawn()
-            .map_err(|e| ApiError::internal(format!("failed to open preview: {e}")))?;
-    }
-
-    Ok(Json(json!({ "opened": true, "path": target })))
+    Ok(Json(json!({
+        "opened": true,
+        "path": target,
+        "player": custom_player.map(|p| p.display().to_string()),
+    })))
 }

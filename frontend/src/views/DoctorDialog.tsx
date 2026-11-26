@@ -76,8 +76,10 @@ export function DoctorDialog({ open, onOpenChange }: Props) {
     const cfg = (await getAppConfigNative()) ?? {
       recent_folders: [],
       last_folder: null,
+      max_recent_folders: 10,
       ffmpeg_path: null,
       ffprobe_path: null,
+      video_player: null,
       wayland_disable_dmabuf: false,
     }
     await setAppConfigNative({ ...cfg, [which]: picked })

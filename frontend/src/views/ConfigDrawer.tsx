@@ -1,27 +1,57 @@
-import { useCallback, useEffect, useRef, useState } from "react"
-import { FolderSearch, Info } from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import {
-  Drawer, DrawerContent, DrawerHeader, DrawerTitle,
-} from "@/components/ui/drawer"
+  Eye,
+  FileCode2,
+  FolderClock,
+  FolderSearch,
+  Info,
+  Monitor,
+  Scissors,
+  SlidersHorizontal,
+  Trash2,
+  Workflow,
+  X,
+} from "lucide-react"
 import {
-  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select"
 import { api } from "@/lib/api"
 import {
   getAppConfigNative,
+  getBootstrap,
   isTauriRuntime,
   pickFileNative,
   setAppConfigNative,
   type AppConfig,
 } from "@/lib/bootstrap"
+import { cn } from "@/lib/utils"
 
 const DETECTORS = ["content", "adaptive", "histogram", "hash"] as const
+const CONTAINERS = ["mp4", "mkv", "mov"] as const
+const COLLECT_MODES = ["copy", "move", "link"] as const
+const RECENT_LIMITS = [3, 5, 10, 15, 20] as const
+const PROXY_HEIGHTS = [
+  { label: "480p", value: "480" },
+  { label: "720p (default)", value: "720" },
+  { label: "1080p", value: "1080" },
+  { label: "Original (no resize)", value: "none" },
+] as const
+
+type TabId = "detection" | "pipeline" | "yaml" | "desktop"
 
 type DetectorMeta = {
   defaultThreshold: number
@@ -84,9 +114,61 @@ const DETECTOR_META: Record<string, DetectorMeta> = {
 }
 
 type PipelineCfg = {
-  detect: { detector: string; threshold: number; min_scene_length: number; luma_only: boolean }
-  review: { default_keep: boolean; auto_apply_template: boolean }
+  detect: {
+    detector: string
+    threshold: number
+    min_scene_length: number
+    luma_only: boolean
+  }
+  preview: {
+    images_per_scene: number
+    image_width: number
+    image_quality: number
+    proxy_height: number | null
+  }
+  review: {
+    default_keep: boolean
+    auto_apply_template: boolean
+  }
+  plan: {
+    keyframe_snap: string
+    min_segment_length: number
+  }
+  split: {
+    output_container: string
+  }
+  collect: {
+    destination: string
+    mode: string
+  }
   [key: string]: unknown
+}
+
+function folderBasename(p: string): string {
+  const parts = p.replace(/[/\\]+$/, "").split(/[/\\]/)
+  return parts[parts.length - 1] || p
+}
+
+function SettingRow({
+  label,
+  description,
+  children,
+}: {
+  label: string
+  description?: string
+  children: ReactNode
+}) {
+  return (
+    <div className="py-3.5 first:pt-0 last:pb-0 flex items-start justify-between gap-6">
+      <div className="space-y-0.5 min-w-0">
+        <div className="text-sm font-medium leading-tight">{label}</div>
+        {description && (
+          <div className="text-xs text-muted-foreground leading-relaxed">{description}</div>
+        )}
+      </div>
+      <div className="shrink-0 flex flex-col items-end gap-1.5">{children}</div>
+    </div>
+  )
 }
 
 export function ConfigDrawer({
@@ -94,58 +176,95 @@ export function ConfigDrawer({
   onOpenChange,
   workingRoot,
   configRevision,
+  recentFolders,
+  onRecentFoldersChange,
 }: {
   open: boolean
   onOpenChange: (v: boolean) => void
   workingRoot: string | null
   configRevision: number
+  recentFolders: string[]
+  onRecentFoldersChange: (recent: string[]) => void
 }) {
+  const [selectedTab, setSelectedTab] = useState<TabId | null>(null)
   const [cfg, setCfg] = useState<PipelineCfg | null>(null)
+  const [savedCfgJson, setSavedCfgJson] = useState<string>("")
   const [cfgRoot, setCfgRoot] = useState<string | null>(null)
+
   const [thresholdText, setThresholdText] = useState<string>("")
+  const [minSceneText, setMinSceneText] = useState<string>("")
+  const [minSegText, setMinSegText] = useState<string>("")
+  const [imagesPerSceneText, setImagesPerSceneText] = useState<string>("")
+
   const [raw, setRaw] = useState<string>("")
+  const [savedRaw, setSavedRaw] = useState<{ root: string | null; text: string }>({ root: null, text: "" })
   const loadedRawRef = useRef<{ root: string | null; text: string }>({ root: null, text: "" })
-  const [showRaw, setShowRaw] = useState(false)
-  const [guideOpen, setGuideOpen] = useState(false)
   const [rawConflict, setRawConflict] = useState(false)
+
   const [appCfg, setAppCfg] = useState<AppConfig | null>(null)
+  const [savedAppCfgJson, setSavedAppCfgJson] = useState<string>("")
+  const [customPlayerMode, setCustomPlayerMode] = useState(false)
+
+  const [guideOpen, setGuideOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const inTauri = isTauriRuntime()
 
+  const inTauri = isTauriRuntime()
+  const platformOs = getBootstrap().os
+  const showWaylandToggle = platformOs === "linux"
+
+  const activeTab: TabId = selectedTab ?? (workingRoot ? "detection" : "desktop")
   const activeCfg = workingRoot && cfgRoot === workingRoot ? cfg : null
+
+  const applyLoadedProjectConfig = useCallback((parsed: PipelineCfg, root: string) => {
+    setCfg(parsed)
+    setSavedCfgJson(JSON.stringify(parsed))
+    setCfgRoot(root)
+    setThresholdText(String(parsed.detect.threshold))
+    setMinSceneText(String(parsed.detect.min_scene_length))
+    setMinSegText(String(parsed.plan.min_segment_length))
+    setImagesPerSceneText(String(parsed.preview.images_per_scene))
+  }, [])
 
   const reloadNow = useCallback(async () => {
     try {
       if (workingRoot) {
         const [c, r] = await Promise.all([api.config.get(), api.config.getRaw()])
-        const parsed = c as PipelineCfg
-        setCfg(parsed)
-        setCfgRoot(workingRoot)
-        setThresholdText(String(parsed.detect.threshold))
+        applyLoadedProjectConfig(c as PipelineCfg, workingRoot)
         setRaw(r.text)
-        loadedRawRef.current = { root: workingRoot, text: r.text }
+        const nextLoaded = { root: workingRoot, text: r.text }
+        loadedRawRef.current = nextLoaded
+        setSavedRaw(nextLoaded)
         setRawConflict(false)
       }
       setError(null)
       if (inTauri) {
         const ac = await getAppConfigNative()
-        if (ac) setAppCfg(ac)
+        if (ac) {
+          setAppCfg(ac)
+          setSavedAppCfgJson(JSON.stringify(ac))
+          setCustomPlayerMode(!!ac.video_player)
+        }
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e))
     }
-  }, [inTauri, workingRoot])
+  }, [applyLoadedProjectConfig, inTauri, workingRoot])
 
   useEffect(() => {
     if (!open) return
     let cancelled = false
 
-    // Always load desktop settings (app.toml) independently so Config opens even when no folder is open.
+    // Always load desktop settings (app.toml) independently so Config works with no folder open.
     if (inTauri) {
       getAppConfigNative()
         .then((ac) => {
-          if (!cancelled && ac) setAppCfg(ac)
+          if (!cancelled && ac) {
+            setAppCfg(ac)
+            setSavedAppCfgJson(JSON.stringify(ac))
+            setCustomPlayerMode(!!ac.video_player)
+          }
         })
         .catch((e: unknown) => {
           if (!cancelled) setError(e instanceof Error ? e.message : String(e))
@@ -159,10 +278,7 @@ export function ConfigDrawer({
     Promise.all([api.config.get(), api.config.getRaw()])
       .then(([c, r]) => {
         if (cancelled) return
-        const parsed = c as PipelineCfg
-        setCfg(parsed)
-        setCfgRoot(workingRoot)
-        setThresholdText(String(parsed.detect.threshold))
+        applyLoadedProjectConfig(c as PipelineCfg, workingRoot)
         setError(null)
         setNotice(null)
         setRaw((prevRaw) => {
@@ -173,7 +289,9 @@ export function ConfigDrawer({
             || prevRaw === prev.text
             || prev.text === ""
           ) {
-            loadedRawRef.current = { root: workingRoot, text: r.text }
+            const nextLoaded = { root: workingRoot, text: r.text }
+            loadedRawRef.current = nextLoaded
+            setSavedRaw(nextLoaded)
             setRawConflict(false)
             return r.text
           }
@@ -188,9 +306,25 @@ export function ConfigDrawer({
       })
 
     return () => { cancelled = true }
-  }, [open, workingRoot, configRevision, inTauri])
+  }, [open, workingRoot, configRevision, inTauri, applyLoadedProjectConfig])
+
+  const projectDirty = useMemo(() => {
+    if (!activeCfg || !savedCfgJson) return false
+    return JSON.stringify(activeCfg) !== savedCfgJson
+  }, [activeCfg, savedCfgJson])
+
+  const yamlDirty = useMemo(() => {
+    if (!workingRoot || savedRaw.root !== workingRoot) return false
+    return raw !== savedRaw.text
+  }, [raw, savedRaw, workingRoot])
+
+  const appDirty = useMemo(() => {
+    if (!appCfg || !savedAppCfgJson) return false
+    return JSON.stringify(appCfg) !== savedAppCfgJson
+  }, [appCfg, savedAppCfgJson])
 
   const update = (path: string[], value: unknown) => {
+    setNotice(null)
     setCfg((c) => {
       if (!c) return c
       const next = structuredClone(c) as Record<string, unknown>
@@ -205,6 +339,7 @@ export function ConfigDrawer({
 
   const handleDetectorChange = (detector: string) => {
     const meta = DETECTOR_META[detector]
+    setNotice(null)
     setCfg((c) => {
       if (!c) return c
       const next = structuredClone(c)
@@ -227,225 +362,912 @@ export function ConfigDrawer({
     }
   }
 
+  const handleMinSceneInput = (val: string) => {
+    setMinSceneText(val)
+    const parsed = parseFloat(val)
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      update(["detect", "min_scene_length"], parsed)
+    }
+  }
+
+  const handleMinSegInput = (val: string) => {
+    setMinSegText(val)
+    const parsed = parseFloat(val)
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      update(["plan", "min_segment_length"], parsed)
+    }
+  }
+
+  const handleImagesPerSceneInput = (val: string) => {
+    setImagesPerSceneText(val)
+    const parsed = parseInt(val, 10)
+    if (Number.isFinite(parsed) && parsed >= 1 && parsed <= 20) {
+      update(["preview", "images_per_scene"], parsed)
+    }
+  }
+
   const saveStructured = async () => {
-    if (!activeCfg) return
+    if (!activeCfg || !workingRoot) return
     const parsedThreshold = parseFloat(thresholdText)
+    const parsedMinScene = parseFloat(minSceneText)
+    const parsedMinSeg = parseFloat(minSegText)
+    const parsedImages = parseInt(imagesPerSceneText, 10)
     if (!Number.isFinite(parsedThreshold)) {
       setError("Threshold must be a valid number")
       return
     }
+    if (!Number.isFinite(parsedMinScene) || parsedMinScene < 0) {
+      setError("Min scene length must be 0 or greater")
+      return
+    }
+    if (!Number.isFinite(parsedMinSeg) || parsedMinSeg < 0) {
+      setError("Min segment length must be 0 or greater")
+      return
+    }
+    if (!Number.isFinite(parsedImages) || parsedImages < 1) {
+      setError("Thumbnails per scene must be at least 1")
+      return
+    }
     const payload = structuredClone(activeCfg)
     payload.detect.threshold = parsedThreshold
+    payload.detect.min_scene_length = parsedMinScene
+    payload.plan.min_segment_length = parsedMinSeg
+    payload.preview.images_per_scene = parsedImages
+
+    setSaving(true)
+    setError(null)
+    setNotice(null)
     try {
-      setError(null)
       await api.config.put(payload)
-      onOpenChange(false)
+      const latestRaw = await api.config.getRaw()
+      applyLoadedProjectConfig(payload, workingRoot)
+      setRaw(latestRaw.text)
+      const nextLoaded = { root: workingRoot, text: latestRaw.text }
+      loadedRawRef.current = nextLoaded
+      setSavedRaw(nextLoaded)
+      setRawConflict(false)
+      setNotice("Saved project config to .vsplit/config.yaml")
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setSaving(false)
     }
   }
 
   const saveRaw = async () => {
+    if (!workingRoot) return
+    setSaving(true)
+    setError(null)
+    setNotice(null)
     try {
-      setError(null)
       await api.config.putRaw(raw)
-      loadedRawRef.current = { root: workingRoot, text: raw }
+      const latestCfg = await api.config.get()
+      applyLoadedProjectConfig(latestCfg as PipelineCfg, workingRoot)
+      const nextLoaded = { root: workingRoot, text: raw }
+      loadedRawRef.current = nextLoaded
+      setSavedRaw(nextLoaded)
       setRawConflict(false)
-      onOpenChange(false)
+      setNotice("Saved raw YAML to .vsplit/config.yaml")
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setSaving(false)
     }
   }
 
   const saveDesktopSettings = async (next: AppConfig) => {
+    setSaving(true)
+    setError(null)
+    setNotice(null)
+    try {
+      const saved = await setAppConfigNative(next)
+      if (saved) {
+        setAppCfg(saved)
+        setSavedAppCfgJson(JSON.stringify(saved))
+        onRecentFoldersChange(saved.recent_folders)
+      }
+      setNotice("Saved desktop settings to app.toml")
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const browseTool = async (field: "ffmpeg_path" | "ffprobe_path" | "video_player") => {
+    if (!appCfg) return
+    const title =
+      field === "ffmpeg_path"
+        ? "Select ffmpeg"
+        : field === "ffprobe_path"
+        ? "Select ffprobe"
+        : "Select external video player executable"
+    const p = await pickFileNative(title)
+    if (!p) return
+    setNotice(null)
+    setAppCfg({ ...appCfg, [field]: p })
+    if (field === "video_player") {
+      setCustomPlayerMode(true)
+    }
+  }
+
+  const handleRemoveRecent = async (folder: string) => {
     try {
       setError(null)
-      const saved = await setAppConfigNative(next)
-      if (saved) setAppCfg(saved)
-      setNotice("Saved desktop settings to app.toml")
+      const res = await api.project.removeRecent(folder)
+      onRecentFoldersChange(res.recent)
+      setAppCfg((prev) => {
+        if (!prev) return prev
+        const next = {
+          ...prev,
+          recent_folders: res.recent,
+          last_folder: res.recent[0] ?? null,
+        }
+        setSavedAppCfgJson(JSON.stringify(next))
+        return next
+      })
+      setNotice("Removed folder from recent list")
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e))
     }
   }
 
-  const browseTool = async (field: "ffmpeg_path" | "ffprobe_path") => {
-    if (!appCfg) return
-    const p = await pickFileNative(`Select ${field === "ffmpeg_path" ? "ffmpeg" : "ffprobe"}`)
-    if (!p) return
-    await saveDesktopSettings({ ...appCfg, [field]: p })
+  const handleClearRecent = async () => {
+    try {
+      setError(null)
+      const res = await api.project.clearRecent()
+      onRecentFoldersChange(res.recent)
+      setAppCfg((prev) => {
+        if (!prev) return prev
+        const next = {
+          ...prev,
+          recent_folders: [],
+          last_folder: null,
+        }
+        setSavedAppCfgJson(JSON.stringify(next))
+        return next
+      })
+      setNotice("Cleared recent folders")
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
   }
 
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      setSelectedTab(null)
+      setNotice(null)
+      setError(null)
+    }
+    onOpenChange(nextOpen)
+  }
+
+  const currentTabDirty =
+    activeTab === "yaml"
+      ? yamlDirty
+      : activeTab === "desktop"
+      ? appDirty
+      : projectDirty
+
+  const handlePrimarySave = () => {
+    if (activeTab === "yaml") return void saveRaw()
+    if (activeTab === "desktop") {
+      if (appCfg) return void saveDesktopSettings(appCfg)
+      return
+    }
+    return void saveStructured()
+  }
+
+  const saveLabel =
+    activeTab === "yaml"
+      ? "Save YAML"
+      : activeTab === "desktop"
+      ? "Save desktop settings"
+      : "Save changes"
+
+  const navBtnClass = (tab: TabId) =>
+    cn(
+      "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs transition-colors text-left",
+      activeTab === tab
+        ? "bg-accent text-accent-foreground font-medium"
+        : "text-muted-foreground hover:text-foreground hover:bg-accent/50",
+    )
+
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent>
-        <DrawerHeader>
-          <DrawerTitle>Configuration</DrawerTitle>
-        </DrawerHeader>
-        <div className="px-4 pb-4 space-y-4 overflow-y-auto max-h-[75vh]">
-          {!workingRoot && (
-            <div className="p-2.5 text-xs rounded-md bg-muted/50 border border-border text-muted-foreground">
-              Open a project folder to edit per-project pipeline configuration (<code>.vsplit/config.yaml</code>).
-            </div>
-          )}
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-w-3xl w-[92vw] h-[580px] max-h-[85vh] p-0 gap-0 overflow-hidden flex flex-col">
+        <DialogHeader className="px-5 py-3.5 border-b border-border flex-shrink-0">
+          <DialogTitle className="text-base">Configuration</DialogTitle>
+          <DialogDescription className="text-xs">
+            {workingRoot
+              ? `Project: ${folderBasename(workingRoot)} (.vsplit/config.yaml) · Global app settings (app.toml)`
+              : "Global desktop settings (app.toml) · Open a project folder to edit pipeline settings"}
+          </DialogDescription>
+        </DialogHeader>
 
-          {workingRoot && !activeCfg && !error && (
-            <div className="text-xs text-muted-foreground">Loading project configuration…</div>
-          )}
-
-          {rawConflict && (
-            <div className="p-2.5 text-xs rounded-md bg-amber-500/15 border border-amber-500/40 text-amber-200 flex items-center justify-between gap-2">
-              <span>External edit detected in .vsplit/config.yaml.</span>
-              <div className="flex gap-1.5">
-                <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={() => void reloadNow()}>
-                  Reload
-                </Button>
-                <Button size="sm" variant="secondary" className="h-6 px-2 text-xs" onClick={() => setRawConflict(false)}>
-                  Keep Mine
-                </Button>
+        <div className="flex flex-1 min-h-0">
+          {/* Left sidebar navigation */}
+          <aside className="w-48 shrink-0 border-r border-border bg-muted/20 p-3 flex flex-col gap-5 overflow-y-auto">
+            <div className="space-y-1">
+              <div className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
+                <span>Project</span>
+                {!workingRoot && <span className="font-normal normal-case opacity-70">none</span>}
               </div>
+              <button
+                type="button"
+                onClick={() => { setSelectedTab("detection"); setNotice(null) }}
+                className={navBtnClass("detection")}
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5 shrink-0" />
+                <span className="flex-1 truncate">Detection</span>
+                {projectDirty && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setSelectedTab("pipeline"); setNotice(null) }}
+                className={navBtnClass("pipeline")}
+              >
+                <Workflow className="h-3.5 w-3.5 shrink-0" />
+                <span className="flex-1 truncate">Pipeline</span>
+                {projectDirty && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setSelectedTab("yaml"); setNotice(null) }}
+                className={navBtnClass("yaml")}
+              >
+                <FileCode2 className="h-3.5 w-3.5 shrink-0" />
+                <span className="flex-1 truncate">Raw YAML</span>
+                {(yamlDirty || rawConflict) && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
+              </button>
             </div>
-          )}
 
-          {activeCfg && (
-            <>
-              <section className="space-y-2.5">
-                <div className="flex items-center gap-1.5">
-                  <h3 className="text-sm font-semibold">Detect</h3>
+            <div className="space-y-1">
+              <div className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                App
+              </div>
+              <button
+                type="button"
+                onClick={() => { setSelectedTab("desktop"); setNotice(null) }}
+                className={navBtnClass("desktop")}
+              >
+                <Monitor className="h-3.5 w-3.5 shrink-0" />
+                <span className="flex-1 truncate">Desktop &amp; Tools</span>
+                {appDirty && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
+              </button>
+            </div>
+          </aside>
+
+          {/* Right content pane */}
+          <div className="flex-1 min-w-0 flex flex-col">
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+              {/* Empty state when on a Project tab without an open folder */}
+              {activeTab !== "desktop" && !workingRoot && (
+                <div className="h-full flex flex-col items-center justify-center text-center space-y-2 py-8">
+                  <div className="text-sm font-medium">No project folder open</div>
+                  <p className="text-xs text-muted-foreground max-w-sm">
+                    Open a video folder first to configure per-project scene detection, pipeline defaults, or edit <code>.vsplit/config.yaml</code>.
+                  </p>
                   <Button
                     type="button"
-                    variant="ghost"
                     size="sm"
-                    className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground"
-                    onClick={() => setGuideOpen(true)}
-                    title="View recommended detector and threshold guide"
+                    variant="outline"
+                    className="mt-2"
+                    onClick={() => setSelectedTab("desktop")}
                   >
-                    <Info className="h-3.5 w-3.5 mr-1" />
-                    Guide
+                    Go to Desktop &amp; Tools
                   </Button>
                 </div>
-                <label className="text-xs flex items-center gap-2">detector
-                  <Select value={activeCfg.detect.detector} onValueChange={handleDetectorChange}>
-                    <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-                    <SelectContent>{DETECTORS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
-                  </Select>
-                </label>
-                <div className="space-y-1.5">
-                  <label className="text-xs flex items-center gap-2">threshold
-                    <Input
-                      type="number"
-                      step={DETECTOR_META[activeCfg.detect.detector]?.step ?? "0.01"}
-                      value={thresholdText}
-                      onChange={(e) => handleThresholdInput(e.target.value)}
-                      className="w-32"
-                    />
-                  </label>
-                  {DETECTOR_META[activeCfg.detect.detector] && (
-                    <>
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        {DETECTOR_META[activeCfg.detect.detector].presets.map((p) => {
-                          const currentNum = parseFloat(thresholdText)
-                          const isSelected = Number.isFinite(currentNum) && Math.abs(currentNum - p.value) < 1e-6
-                          return (
-                            <Button
-                              key={p.label}
-                              type="button"
-                              size="sm"
-                              variant={isSelected ? "secondary" : "outline"}
-                              className="h-6 px-2 text-[11px] font-normal"
-                              onClick={() => handleThresholdInput(String(p.value))}
-                            >
-                              {p.label} <span className="ml-1 font-mono opacity-80">{p.value}</span>
-                            </Button>
-                          )
-                        })}
-                      </div>
-                      <div className="text-[11px] text-muted-foreground">
-                        Typical: {DETECTOR_META[activeCfg.detect.detector].range} ({DETECTOR_META[activeCfg.detect.detector].direction})
-                      </div>
-                    </>
-                  )}
+              )}
+
+              {/* Loading state for project config */}
+              {activeTab !== "desktop" && workingRoot && !activeCfg && !error && (
+                <div className="text-xs text-muted-foreground py-4">Loading project configuration…</div>
+              )}
+
+              {/* Tab: Detection */}
+              {activeTab === "detection" && activeCfg && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between pb-2 border-b border-border">
+                    <div>
+                      <h3 className="text-sm font-semibold">Scene Detection</h3>
+                      <p className="text-xs text-muted-foreground">
+                        Algorithm and cut sensitivity used during the detect stage.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2.5 text-xs"
+                      onClick={() => setGuideOpen(true)}
+                    >
+                      <Info className="h-3.5 w-3.5 mr-1.5" />
+                      Detector Guide
+                    </Button>
+                  </div>
+
+                  <div className="divide-y divide-border/60">
+                    <SettingRow
+                      label="Detector"
+                      description="Switching detectors automatically applies its recommended default threshold."
+                    >
+                      <Select value={activeCfg.detect.detector} onValueChange={handleDetectorChange}>
+                        <SelectTrigger className="w-44 h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {DETECTORS.map((d) => (
+                            <SelectItem key={d} value={d} className="text-xs">
+                              {d}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </SettingRow>
+
+                    <SettingRow
+                      label="Threshold"
+                      description={
+                        DETECTOR_META[activeCfg.detect.detector]
+                          ? `Typical: ${DETECTOR_META[activeCfg.detect.detector].range} (${DETECTOR_META[activeCfg.detect.detector].direction})`
+                          : undefined
+                      }
+                    >
+                      <Input
+                        type="number"
+                        step={DETECTOR_META[activeCfg.detect.detector]?.step ?? "0.01"}
+                        value={thresholdText}
+                        onChange={(e) => handleThresholdInput(e.target.value)}
+                        className="w-44 h-8 text-xs font-mono"
+                      />
+                      {DETECTOR_META[activeCfg.detect.detector] && (
+                        <div className="flex items-center gap-1 flex-wrap justify-end">
+                          {DETECTOR_META[activeCfg.detect.detector].presets.map((p) => {
+                            const currentNum = parseFloat(thresholdText)
+                            const isSelected = Number.isFinite(currentNum) && Math.abs(currentNum - p.value) < 1e-6
+                            return (
+                              <Button
+                                key={p.label}
+                                type="button"
+                                size="sm"
+                                variant={isSelected ? "secondary" : "outline"}
+                                className="h-6 px-2 text-[11px] font-normal"
+                                onClick={() => handleThresholdInput(String(p.value))}
+                              >
+                                {p.label} <span className="ml-1 font-mono opacity-80">{p.value}</span>
+                              </Button>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </SettingRow>
+
+                    <SettingRow
+                      label="Min scene length (seconds)"
+                      description="Suppresses rapid flash cuts shorter than this duration."
+                    >
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        value={minSceneText}
+                        onChange={(e) => handleMinSceneInput(e.target.value)}
+                        className="w-28 h-8 text-xs font-mono"
+                      />
+                    </SettingRow>
+
+                    <SettingRow
+                      label="Luma only"
+                      description="Score brightness channel only for faster detection (content & adaptive)."
+                    >
+                      <Switch
+                        checked={activeCfg.detect.luma_only}
+                        onCheckedChange={(v) => update(["detect", "luma_only"], v)}
+                      />
+                    </SettingRow>
+                  </div>
                 </div>
-              </section>
+              )}
 
-              <section className="space-y-2">
-                <h3 className="text-sm font-semibold">Review</h3>
-                <label className="text-xs flex items-center gap-2">default_keep
-                  <Switch checked={activeCfg.review.default_keep} onCheckedChange={(v) => update(["review", "default_keep"], v)} />
-                </label>
-              </section>
+              {/* Tab: Pipeline */}
+              {activeTab === "pipeline" && activeCfg && (
+                <div className="space-y-5">
+                  <div className="rounded-lg border border-border bg-card/40 overflow-hidden">
+                    <div className="px-4 py-2.5 bg-muted/50 border-b border-border flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Eye className="h-3.5 w-3.5 text-primary" />
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-foreground">
+                          Review &amp; Preview
+                        </h3>
+                      </div>
+                      <span className="text-[11px] text-muted-foreground">
+                        Scene review &amp; video proxy
+                      </span>
+                    </div>
+                    <div className="px-4 py-2 divide-y divide-border/60">
+                      <SettingRow
+                        label="Keep scenes by default"
+                        description="Mark newly detected scenes as kept in decisions/cuts.json."
+                      >
+                        <Switch
+                          checked={activeCfg.review.default_keep}
+                          onCheckedChange={(v) => update(["review", "default_keep"], v)}
+                        />
+                      </SettingRow>
+                      <SettingRow
+                        label="Thumbnails per scene"
+                        description="Number of preview thumbnails extracted for each detected scene."
+                      >
+                        <Input
+                          type="number"
+                          min="1"
+                          max="20"
+                          step="1"
+                          value={imagesPerSceneText}
+                          onChange={(e) => handleImagesPerSceneInput(e.target.value)}
+                          className="w-24 h-8 text-xs font-mono"
+                        />
+                      </SettingRow>
+                      <SettingRow
+                        label="Preview proxy height"
+                        description="Downscale height for the in-app review video proxy."
+                      >
+                        <Select
+                          value={activeCfg.preview.proxy_height == null ? "none" : String(activeCfg.preview.proxy_height)}
+                          onValueChange={(v) =>
+                            update(["preview", "proxy_height"], v === "none" ? null : parseInt(v, 10))
+                          }
+                        >
+                          <SelectTrigger className="w-44 h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {PROXY_HEIGHTS.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </SettingRow>
+                    </div>
+                  </div>
 
-              <section>
-                <button className="text-xs text-zinc-400" onClick={() => setShowRaw((s) => !s)}>
-                  {showRaw ? "▾" : "▸"} Advanced (raw YAML)
-                </button>
-                {showRaw && (
+                  <div className="rounded-lg border border-border bg-card/40 overflow-hidden">
+                    <div className="px-4 py-2.5 bg-muted/50 border-b border-border flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Scissors className="h-3.5 w-3.5 text-primary" />
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-foreground">
+                          Split &amp; Collect
+                        </h3>
+                      </div>
+                      <span className="text-[11px] text-muted-foreground">
+                        Output format &amp; export folder
+                      </span>
+                    </div>
+                    <div className="px-4 py-2 divide-y divide-border/60">
+                      <SettingRow
+                        label="Output container"
+                        description="File format for split scene clips."
+                      >
+                        <Select
+                          value={activeCfg.split.output_container}
+                          onValueChange={(v) => update(["split", "output_container"], v)}
+                        >
+                          <SelectTrigger className="w-32 h-8 text-xs font-mono">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {CONTAINERS.map((c) => (
+                              <SelectItem key={c} value={c} className="text-xs font-mono">
+                                .{c}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </SettingRow>
+                      <SettingRow
+                        label="Min segment length (seconds)"
+                        description="Minimum duration for planned output segments."
+                      >
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          value={minSegText}
+                          onChange={(e) => handleMinSegInput(e.target.value)}
+                          className="w-28 h-8 text-xs font-mono"
+                        />
+                      </SettingRow>
+                      <SettingRow
+                        label="Collect destination"
+                        description="Default folder name (relative to project root) for collected clips."
+                      >
+                        <Input
+                          value={activeCfg.collect.destination}
+                          onChange={(e) => update(["collect", "destination"], e.target.value)}
+                          className="w-44 h-8 text-xs font-mono"
+                        />
+                      </SettingRow>
+                      <SettingRow
+                        label="Collect mode"
+                        description="Whether Collect copies, moves, or hard-links finished clips."
+                      >
+                        <Select
+                          value={activeCfg.collect.mode}
+                          onValueChange={(v) => update(["collect", "mode"], v)}
+                        >
+                          <SelectTrigger className="w-32 h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {COLLECT_MODES.map((m) => (
+                              <SelectItem key={m} value={m} className="text-xs">
+                                {m}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </SettingRow>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab: Raw YAML */}
+              {activeTab === "yaml" && workingRoot && (
+                <div className="h-full flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-semibold">Raw Project Config</h3>
+                      <p className="text-xs text-muted-foreground font-mono">.vsplit/config.yaml</p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2.5 text-xs"
+                      onClick={() => void reloadNow()}
+                    >
+                      Reload from disk
+                    </Button>
+                  </div>
+
+                  {rawConflict && (
+                    <div className="p-2.5 text-xs rounded-md bg-amber-500/15 border border-amber-500/40 text-amber-200 flex items-center justify-between gap-2">
+                      <span>External edit detected in .vsplit/config.yaml.</span>
+                      <div className="flex gap-1.5">
+                        <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={() => void reloadNow()}>
+                          Reload
+                        </Button>
+                        <Button size="sm" variant="secondary" className="h-6 px-2 text-xs" onClick={() => setRawConflict(false)}>
+                          Keep Mine
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
                   <textarea
                     value={raw}
-                    onChange={(e) => setRaw(e.target.value)}
-                    className="w-full mt-2 h-48 bg-zinc-900 border border-zinc-800 rounded p-2 font-mono text-xs"
+                    onChange={(e) => { setRaw(e.target.value); setNotice(null) }}
+                    spellCheck={false}
+                    className="flex-1 min-h-[320px] w-full bg-zinc-950/70 border border-border rounded-md p-3 font-mono text-xs leading-relaxed resize-none focus:outline-none focus:ring-1 focus:ring-ring"
                   />
+                </div>
+              )}
+
+              {/* Tab: Desktop & Tools */}
+              {activeTab === "desktop" && (
+                <div className="space-y-4">
+                  <div className="pb-2 border-b border-border">
+                    <h3 className="text-sm font-semibold">Desktop &amp; Media Tools</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Global machine preferences stored in <code>app.toml</code>. Applies across all projects.
+                    </p>
+                  </div>
+
+                  {!inTauri && (
+                    <div className="p-3 text-xs rounded-md bg-muted/50 border border-border text-muted-foreground">
+                      Desktop settings are managed by the native Tauri shell and are unavailable in browser dev mode.
+                    </div>
+                  )}
+
+                  {inTauri && !appCfg && !error && (
+                    <div className="text-xs text-muted-foreground py-2">Loading desktop settings…</div>
+                  )}
+
+                  {inTauri && appCfg && (
+                    <div className="divide-y divide-border/60">
+                      <SettingRow
+                        label="External video player"
+                        description="Used when clicking Open externally ↗ on a video preview."
+                      >
+                        <Select
+                          value={customPlayerMode ? "custom" : "default"}
+                          onValueChange={(v) => {
+                            setNotice(null)
+                            if (v === "default") {
+                              setCustomPlayerMode(false)
+                              setAppCfg({ ...appCfg, video_player: null })
+                            } else {
+                              setCustomPlayerMode(true)
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="w-56 h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="default" className="text-xs">
+                              System default video player
+                            </SelectItem>
+                            <SelectItem value="custom" className="text-xs">
+                              Custom player executable…
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {customPlayerMode && (
+                          <div className="flex items-center gap-1.5">
+                            <Input
+                              value={appCfg.video_player ?? ""}
+                              placeholder="Path to mpv, VLC, PotPlayer…"
+                              onChange={(e) => {
+                                setNotice(null)
+                                setAppCfg({ ...appCfg, video_player: e.target.value || null })
+                              }}
+                              className="w-56 h-8 text-xs font-mono"
+                            />
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="outline"
+                              className="h-8 w-8 shrink-0"
+                              onClick={() => void browseTool("video_player")}
+                              title="Browse for video player executable"
+                            >
+                              <FolderSearch className="h-3.5 w-3.5" />
+                            </Button>
+                            {appCfg.video_player && (
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 shrink-0"
+                                onClick={() => {
+                                  setNotice(null)
+                                  setCustomPlayerMode(false)
+                                  setAppCfg({ ...appCfg, video_player: null })
+                                }}
+                                title="Reset to system default player"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </SettingRow>
+
+                      <SettingRow
+                        label="FFmpeg path"
+                        description="Optional override. Leave blank to auto-discover from PATH."
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <Input
+                            value={appCfg.ffmpeg_path ?? ""}
+                            placeholder="Auto-discover from PATH"
+                            onChange={(e) => {
+                              setNotice(null)
+                              setAppCfg({ ...appCfg, ffmpeg_path: e.target.value || null })
+                            }}
+                            className="w-56 h-8 text-xs font-mono"
+                          />
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className="h-8 w-8 shrink-0"
+                            onClick={() => void browseTool("ffmpeg_path")}
+                            title="Browse for ffmpeg"
+                          >
+                            <FolderSearch className="h-3.5 w-3.5" />
+                          </Button>
+                          {appCfg.ffmpeg_path && (
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 shrink-0"
+                              onClick={() => {
+                                setNotice(null)
+                                setAppCfg({ ...appCfg, ffmpeg_path: null })
+                              }}
+                              title="Reset to auto-discover"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                      </SettingRow>
+
+                      <SettingRow
+                        label="FFprobe path"
+                        description="Optional override. Leave blank to auto-discover from PATH."
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <Input
+                            value={appCfg.ffprobe_path ?? ""}
+                            placeholder="Auto-discover from PATH"
+                            onChange={(e) => {
+                              setNotice(null)
+                              setAppCfg({ ...appCfg, ffprobe_path: e.target.value || null })
+                            }}
+                            className="w-56 h-8 text-xs font-mono"
+                          />
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className="h-8 w-8 shrink-0"
+                            onClick={() => void browseTool("ffprobe_path")}
+                            title="Browse for ffprobe"
+                          >
+                            <FolderSearch className="h-3.5 w-3.5" />
+                          </Button>
+                          {appCfg.ffprobe_path && (
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 shrink-0"
+                              onClick={() => {
+                                setNotice(null)
+                                setAppCfg({ ...appCfg, ffprobe_path: null })
+                              }}
+                              title="Reset to auto-discover"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                      </SettingRow>
+
+                      {showWaylandToggle && (
+                        <SettingRow
+                          label="Disable WebKitGTK DMABUF renderer"
+                          description="Linux Wayland workaround if the window renders blank (restart required)."
+                        >
+                          <Switch
+                            checked={appCfg.wayland_disable_dmabuf}
+                            onCheckedChange={(v) => {
+                              setNotice(null)
+                              setAppCfg({ ...appCfg, wayland_disable_dmabuf: v })
+                            }}
+                          />
+                        </SettingRow>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="rounded-lg border border-border bg-card/40 overflow-hidden mt-4">
+                    <div className="px-4 py-2.5 bg-muted/50 border-b border-border flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <FolderClock className="h-3.5 w-3.5 text-primary" />
+                        <h4 className="text-xs font-semibold uppercase tracking-wider text-foreground">
+                          Recent Folders
+                        </h4>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {inTauri && appCfg && (
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] text-muted-foreground">Max</span>
+                            <Select
+                              value={String(appCfg.max_recent_folders ?? 10)}
+                              onValueChange={(v) => {
+                                setNotice(null)
+                                setAppCfg({ ...appCfg, max_recent_folders: parseInt(v, 10) })
+                              }}
+                            >
+                              <SelectTrigger className="h-6 w-16 px-2 text-[11px] font-mono">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {RECENT_LIMITS.map((n) => (
+                                  <SelectItem key={n} value={String(n)} className="text-xs font-mono">
+                                    {n}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
+                        {recentFolders.length > 0 && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 px-2 text-[11px] text-muted-foreground hover:text-destructive"
+                            onClick={() => void handleClearRecent()}
+                          >
+                            <Trash2 className="h-3 w-3 mr-1" />
+                            Clear all
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="divide-y divide-border/60">
+                      {recentFolders.length === 0 ? (
+                        <div className="px-4 py-3 text-xs text-muted-foreground">
+                          No recent folders saved.
+                        </div>
+                      ) : (
+                        recentFolders.map((rf) => (
+                          <div key={rf} className="px-4 py-2 flex items-center justify-between gap-2">
+                            <span className="font-mono text-xs truncate text-foreground/90" title={rf}>
+                              {rf}
+                            </span>
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
+                              onClick={() => void handleRemoveRecent(rf)}
+                              title={`Remove ${rf} from recent folders`}
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Sticky scope-aware footer */}
+            <div className="border-t border-border px-6 py-3 flex items-center justify-between gap-3 bg-muted/10 flex-shrink-0">
+              <div className="text-xs min-w-0 truncate">
+                {error ? (
+                  <span className="text-red-400">{error}</span>
+                ) : notice ? (
+                  <span className="text-emerald-400">{notice}</span>
+                ) : currentTabDirty ? (
+                  <span className="inline-flex items-center gap-1.5 text-amber-300">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                    Unsaved changes
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">
+                    {activeTab === "desktop" ? "Applies globally (app.toml)" : "Applies to current project"}
+                  </span>
                 )}
-              </section>
-            </>
-          )}
-
-          {inTauri && !appCfg && !error && (
-            <div className="text-xs text-muted-foreground">Loading desktop settings…</div>
-          )}
-
-          {inTauri && appCfg && (
-            <section className="space-y-2 pt-3 border-t border-border">
-              <h3 className="text-sm font-semibold">Desktop Settings (app.toml)</h3>
-              <div className="space-y-1.5">
-                <label className="text-xs text-muted-foreground block">ffmpeg path (optional override)</label>
-                <div className="flex gap-2">
-                  <Input
-                    value={appCfg.ffmpeg_path ?? ""}
-                    placeholder="Auto-discover from PATH"
-                    onChange={(e) => setAppCfg({ ...appCfg, ffmpeg_path: e.target.value || null })}
-                    className="h-8 text-xs font-mono"
-                  />
-                  <Button size="sm" variant="outline" onClick={() => void browseTool("ffmpeg_path")}>
-                    <FolderSearch className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
               </div>
-              <div className="space-y-1.5">
-                <label className="text-xs text-muted-foreground block">ffprobe path (optional override)</label>
-                <div className="flex gap-2">
-                  <Input
-                    value={appCfg.ffprobe_path ?? ""}
-                    placeholder="Auto-discover from PATH"
-                    onChange={(e) => setAppCfg({ ...appCfg, ffprobe_path: e.target.value || null })}
-                    className="h-8 text-xs font-mono"
-                  />
-                  <Button size="sm" variant="outline" onClick={() => void browseTool("ffprobe_path")}>
-                    <FolderSearch className="h-3.5 w-3.5" />
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => handleOpenChange(false)}
+                >
+                  Close
+                </Button>
+                {(activeTab === "desktop" ? inTauri && !!appCfg : !!workingRoot && (activeTab === "yaml" || !!activeCfg)) && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={saving || !currentTabDirty}
+                    onClick={handlePrimarySave}
+                  >
+                    {saving ? "Saving…" : saveLabel}
                   </Button>
-                </div>
+                )}
               </div>
-              <label className="text-xs flex items-center gap-2 pt-1">
-                <span>Disable WebKitGTK DMABUF renderer on Wayland (restart required)</span>
-                <Switch
-                  checked={appCfg.wayland_disable_dmabuf}
-                  onCheckedChange={(v) => void saveDesktopSettings({ ...appCfg, wayland_disable_dmabuf: v })}
-                />
-              </label>
-              <Button size="sm" variant="secondary" onClick={() => void saveDesktopSettings(appCfg)}>
-                Save desktop settings
-              </Button>
-            </section>
-          )}
-
-          {notice && <div className="text-emerald-400 text-xs">{notice}</div>}
-          {error && <div className="text-red-400 text-xs">{error}</div>}
-          <div className="flex gap-2">
-            {activeCfg && <Button onClick={() => void saveStructured()}>Save form</Button>}
-            {activeCfg && showRaw && <Button variant="secondary" onClick={() => void saveRaw()}>Save raw YAML</Button>}
-            <Button variant="ghost" onClick={() => onOpenChange(false)}>Close</Button>
+            </div>
           </div>
         </div>
 
+        {/* Nested Detector & Threshold Guide dialog */}
         <Dialog open={guideOpen} onOpenChange={setGuideOpen}>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
@@ -502,7 +1324,7 @@ export function ConfigDrawer({
             </div>
           </DialogContent>
         </Dialog>
-      </DrawerContent>
-    </Drawer>
+      </DialogContent>
+    </Dialog>
   )
 }

@@ -2,13 +2,16 @@ export type ServerBootstrap = {
   baseUrl: string
   token: string
   isTauri: boolean
+  os: string
 }
 
 export type AppConfig = {
   recent_folders: string[]
   last_folder: string | null
+  max_recent_folders: number
   ffmpeg_path: string | null
   ffprobe_path: string | null
+  video_player: string | null
   wayland_disable_dmabuf: boolean
 }
 
@@ -23,11 +26,12 @@ export async function initBootstrap(): Promise<ServerBootstrap> {
 
   if (isTauriRuntime()) {
     const { invoke } = await import("@tauri-apps/api/core")
-    const res = await invoke<{ base_url: string; token: string }>("get_server_bootstrap")
+    const res = await invoke<{ base_url: string; token: string; os?: string }>("get_server_bootstrap")
     cachedBootstrap = {
       baseUrl: res.base_url.replace(/\/$/, ""),
       token: res.token,
       isTauri: true,
+      os: res.os ?? "unknown",
     }
     return cachedBootstrap
   }
@@ -36,13 +40,13 @@ export async function initBootstrap(): Promise<ServerBootstrap> {
   const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? {}
   const baseUrl = (env.VITE_VSPLIT_DEV_URL ?? "http://127.0.0.1:8765").replace(/\/$/, "")
   const token = env.VITE_VSPLIT_DEV_TOKEN ?? ""
-  cachedBootstrap = { baseUrl, token, isTauri: false }
+  cachedBootstrap = { baseUrl, token, isTauri: false, os: "unknown" }
   return cachedBootstrap
 }
 
 export function getBootstrap(): ServerBootstrap {
   if (!cachedBootstrap) {
-    return { baseUrl: "", token: "", isTauri: isTauriRuntime() }
+    return { baseUrl: "", token: "", isTauri: isTauriRuntime(), os: "unknown" }
   }
   return cachedBootstrap
 }

@@ -356,7 +356,7 @@ export default function App() {
             </SelectTrigger>
             <SelectContent>
               {recentFolders.map((rf) => (
-                <SelectItem key={rf} value={rf} className="text-xs">
+                <SelectItem key={rf} value={rf} title={rf} className="text-xs">
                   {folderBasename(rf)}
                 </SelectItem>
               ))}
@@ -551,8 +551,8 @@ export default function App() {
                 variant="ghost"
                 size="sm"
                 onClick={() => api.workspaces.openPreview(previewSlug)
-                  .catch((e: unknown) => alert(`Failed to open external preview: ${e instanceof Error ? e.message : e}`))}
-                title="Open in new browser window"
+                  .catch((e: unknown) => alert(`Failed to open external player: ${e instanceof Error ? e.message : e}`))}
+                title="Open video in external video player (configure in Settings → Desktop & Tools)"
               >
                 Open externally ↗
               </Button>
@@ -586,6 +586,8 @@ export default function App() {
         onOpenChange={setConfigOpen}
         workingRoot={workingRoot}
         configRevision={configRevision}
+        recentFolders={recentFolders}
+        onRecentFoldersChange={setRecentFolders}
       />
       <CollectDialog open={collectOpen} onOpenChange={setCollectOpen} />
       <DoctorDialog open={doctorOpen} onOpenChange={setDoctorOpen} />

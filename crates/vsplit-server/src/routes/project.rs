@@ -4,7 +4,7 @@ use axum::extract::State;
 use axum::Json;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use vsplit_core::config::{load_app_config, load_resolved_config};
+use vsplit_core::config::{load_app_config, load_resolved_config, save_app_config};
 use vsplit_core::scan::{adopt_or_find, scan_folder, RelocatePolicy, ScanOptions};
 
 use crate::routes::{require_working_root, ApiError};
@@ -33,7 +33,10 @@ pub async fn open_project(
 }
 
 pub async fn recent_projects(State(state): State<AppState>) -> Json<Value> {
-    let cfg = load_app_config().unwrap_or_default();
+    let mut cfg = load_app_config().unwrap_or_default();
+    if cfg.prune_missing_recent_folders() {
+        let _ = save_app_config(&cfg);
+    }
     let recent: Vec<String> = cfg
         .recent_folders
         .iter()
@@ -44,6 +47,38 @@ pub async fn recent_projects(State(state): State<AppState>) -> Json<Value> {
         "working_root": working_root,
         "recent": recent,
     }))
+}
+
+#[derive(Deserialize, Default)]
+pub struct RemoveRecentBody {
+    pub path: Option<String>,
+    #[serde(default)]
+    pub clear_all: bool,
+}
+
+pub async fn remove_recent_project(
+    State(state): State<AppState>,
+    Json(body): Json<RemoveRecentBody>,
+) -> Result<Json<Value>, ApiError> {
+    let mut cfg = load_app_config().unwrap_or_default();
+    cfg.prune_missing_recent_folders();
+    if body.clear_all {
+        cfg.clear_recent_folders();
+    } else if let Some(ref p) = body.path {
+        cfg.remove_recent_folder(&PathBuf::from(p));
+    }
+    save_app_config(&cfg).map_err(|e| ApiError::internal(e.to_string()))?;
+
+    let recent: Vec<String> = cfg
+        .recent_folders
+        .iter()
+        .map(|p| p.display().to_string())
+        .collect();
+    let working_root = state.working_root().map(|p| p.display().to_string());
+    Ok(Json(json!({
+        "working_root": working_root,
+        "recent": recent,
+    })))
 }
 
 #[derive(Deserialize)]

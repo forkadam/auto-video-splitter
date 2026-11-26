@@ -1,7 +1,7 @@
 {
   "name": "vsplit-desktop",
   "private": true,
-  "version": "0.4.0-alpha.1",
+  "version": "0.4.0-alpha.2",
   "scripts": {
     "tauri": "tauri",
     "stage-cli": "node scripts/stage-cli.mjs",

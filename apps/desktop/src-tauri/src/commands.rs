@@ -32,7 +32,9 @@ pub fn get_app_config() -> Result<AppConfig, String> {
 }
 
 #[tauri::command]
-pub fn set_app_config(config: AppConfig) -> Result<AppConfig, String> {
+pub fn set_app_config(mut config: AppConfig) -> Result<AppConfig, String> {
+    config.max_recent_folders = config.effective_max_recent();
+    config.prune_missing_recent_folders();
     save_app_config(&config).map_err(|e| e.to_string())?;
     // Refresh session MediaToolchain cache immediately so newly picked ffmpeg/ffprobe paths apply.
     let _ = refresh_toolchain(&config);

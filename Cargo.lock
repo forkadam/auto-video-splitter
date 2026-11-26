@@ -4997,7 +4997,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vsplit-cli"
-version = "0.4.0-alpha.1"
+version = "0.4.0-alpha.2"
 dependencies = [
  "chrono",
  "clap",
@@ -5013,7 +5013,7 @@ dependencies = [
 
 [[package]]
 name = "vsplit-core"
-version = "0.4.0-alpha.1"
+version = "0.4.0-alpha.2"
 dependencies = [
  "chrono",
  "directories",
@@ -5039,7 +5039,7 @@ dependencies = [
 
 [[package]]
 name = "vsplit-desktop"
-version = "0.4.0-alpha.1"
+version = "0.4.0-alpha.2"
 dependencies = [
  "directories",
  "serde",
@@ -5059,7 +5059,7 @@ dependencies = [
 
 [[package]]
 name = "vsplit-server"
-version = "0.4.0-alpha.1"
+version = "0.4.0-alpha.2"
 dependencies = [
  "axum",
  "chrono",

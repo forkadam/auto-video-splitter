@@ -117,6 +117,10 @@ export const api = {
       jsonRequest<{ working_root: string; recent: string[] }>("POST", "/api/project/open", { path }),
     recent: () =>
       jsonRequest<{ working_root: string | null; recent: string[] }>("GET", "/api/project/recent"),
+    removeRecent: (path: string) =>
+      jsonRequest<{ working_root: string | null; recent: string[] }>("POST", "/api/project/recent/remove", { path }),
+    clearRecent: () =>
+      jsonRequest<{ working_root: string | null; recent: string[] }>("POST", "/api/project/recent/remove", { clear_all: true }),
     adoptFile: (path: string) =>
       jsonRequest<{ slug: string; working_root: string; recent: string[] }>("POST", "/api/project/adopt-file", { path }),
   },

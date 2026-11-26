@@ -12,6 +12,7 @@ use vsplit_core::jobs::{JobCoordinator, JobEvent};
 use vsplit_core::locks::inspect_workspace_lock;
 use vsplit_core::manifest::load_manifest;
 use vsplit_core::paths::workspace_dir;
+use vsplit_core::schemas::app_config::clean_display_path;
 use vsplit_core::watcher::{WatchEvent, WorkspaceWatcher};
 
 use crate::sse::{EventBroker, SseEvent};
@@ -115,7 +116,7 @@ impl AppState {
                 path.display()
             )));
         }
-        let canonical = path.canonicalize().unwrap_or(path);
+        let canonical = clean_display_path(path.canonicalize().unwrap_or(path));
 
         // Tear down any previous watcher before binding the new working root.
         {
@@ -144,6 +145,7 @@ impl AppState {
 
         let recent: Vec<String> = if persist_recent {
             let mut cfg = load_app_config().unwrap_or_default();
+            cfg.prune_missing_recent_folders();
             cfg.record_recent_folder(canonical.clone());
             let _ = save_app_config(&cfg);
             cfg.recent_folders
@@ -151,9 +153,11 @@ impl AppState {
                 .map(|p| p.display().to_string())
                 .collect()
         } else {
-            load_app_config()
-                .unwrap_or_default()
-                .recent_folders
+            let mut cfg = load_app_config().unwrap_or_default();
+            if cfg.prune_missing_recent_folders() {
+                let _ = save_app_config(&cfg);
+            }
+            cfg.recent_folders
                 .iter()
                 .map(|p| p.display().to_string())
                 .collect()

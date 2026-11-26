@@ -61,6 +61,10 @@ async fn http_req(
 
 #[tokio::test]
 async fn auth_origin_media_206_cuts_409_and_unignore_contract() {
+    // Isolate app.toml so integration tests never pollute the developer's real recent_folders.
+    let cfg_dir = TempDir::new().unwrap();
+    std::env::set_var("VSPLIT_CONFIG_DIR", cfg_dir.path());
+
     let dir = TempDir::new().unwrap();
     let root = dir.path();
     fs::copy(fixture_clip("short.mp4"), root.join("clip.mp4")).unwrap();

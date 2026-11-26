@@ -115,6 +115,10 @@ pub fn router(state: AppState) -> Router {
         .route("/doctor", get(doctor::get_doctor))
         .route("/project/open", post(project::open_project))
         .route("/project/recent", get(project::recent_projects))
+        .route(
+            "/project/recent/remove",
+            post(project::remove_recent_project),
+        )
         .route("/project/adopt-file", post(project::adopt_file))
         .route("/scan", post(project::scan))
         .route("/jobs/cancel", post(project::cancel_jobs))
