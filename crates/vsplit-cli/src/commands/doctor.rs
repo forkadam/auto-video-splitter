@@ -54,6 +54,9 @@ fn print_human(report: &vsplit_core::doctor::DoctorReport) {
             "  gstreamer: avdec_h264={} fuse2={}",
             report.gstreamer.avdec_h264, report.gstreamer.fuse2
         );
+        if let Some(ref hint) = report.gstreamer.hint {
+            println!("  note:      {hint} (desktop video preview only)");
+        }
     }
     if let Some(ref w) = report.path_shadowing.warning {
         println!("  warning:   {w}");

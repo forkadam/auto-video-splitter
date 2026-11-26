@@ -25,6 +25,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             ffmpeg \
+            gstreamer1.0-tools \
+            gstreamer1.0-libav \
             libwebkit2gtk-4.1-dev \
             libappindicator3-dev \
             librsvg2-dev \

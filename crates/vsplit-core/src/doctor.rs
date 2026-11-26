@@ -75,7 +75,7 @@ fn check_gstreamer() -> GstreamerStatus {
             || Path::new("/lib/x86_64-linux-gnu/libfuse.so.2").exists()
             || !find_all_in_path("fusermount").is_empty();
         let hint = if !avdec || !fuse2 {
-            Some("Install Arch packages: sudo pacman -S ffmpeg gst-libav gst-plugins-good gst-plugins-bad fuse2".to_string())
+            Some("Install Arch packages: sudo pacman -S ffmpeg gst-libav gst-plugins-good gst-plugins-bad fuse2 (Debian/Ubuntu: sudo apt install gstreamer1.0-tools gstreamer1.0-libav libfuse2)".to_string())
         } else {
             None
         };
@@ -215,7 +215,10 @@ pub fn run_doctor(working_root: Option<&Path>, app_cfg: &AppConfig) -> DoctorRep
         .unwrap_or_default();
 
     let wayland_session = std::env::var_os("WAYLAND_DISPLAY").is_some();
-    let ok = ffmpeg.ok && ffprobe.ok && tc.encoders.libx264 && tc.encoders.aac && gstreamer.ok;
+    // Top-level `ok` reflects core pipeline dependencies required for headless CLI and
+    // backend processing. Linux WebKitGTK GStreamer (`avdec_h264`) is reported separately
+    // in `gstreamer.ok` so headless Linux servers/CI without GUI codecs still pass doctor.
+    let ok = ffmpeg.ok && ffprobe.ok && tc.encoders.libx264 && tc.encoders.aac;
 
     DoctorReport {
         ok,
