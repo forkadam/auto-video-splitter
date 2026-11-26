@@ -195,7 +195,7 @@ export function DoctorDialog({ open, onOpenChange }: Props) {
                 <div className="text-amber-300">{report.path_shadowing.warning}</div>
               )}
               <div className="text-muted-foreground">
-                Active workspace locks: {Object.keys(report.locks).length}
+                Active video locks: {Object.keys(report.locks).length}
               </div>
             </div>
           </div>

@@ -79,7 +79,7 @@ export function CollectDialog({ open, onOpenChange }: Props) {
       if (mode) body.mode = mode
       const r = await api.batch.collect(body)
       const lines = [
-        `Collected ${r.collected} file${r.collected === 1 ? "" : "s"} from ${r.from_workspaces} workspace${r.from_workspaces === 1 ? "" : "s"}.`,
+        `Collected ${r.collected} file${r.collected === 1 ? "" : "s"} from ${r.from_workspaces} video${r.from_workspaces === 1 ? "" : "s"}.`,
         `→ ${r.destination}`,
       ]
       const skips: string[] = []
@@ -102,7 +102,7 @@ export function CollectDialog({ open, onOpenChange }: Props) {
         <DialogHeader>
           <DialogTitle>Collect outputs</DialogTitle>
           <DialogDescription>
-            Gather every split=done workspace's clips into one folder. Preview shows what would happen with the current settings.
+            Gather every finished video's split clips into one folder. Preview shows what would happen with the current settings.
           </DialogDescription>
         </DialogHeader>
 
@@ -147,7 +147,7 @@ export function CollectDialog({ open, onOpenChange }: Props) {
                   <span className="text-foreground font-medium">{mode === "copy" ? "copied" : mode === "move" ? "moved" : "linked"}</span>
                   {" "}from{" "}
                   <span className="text-foreground font-medium">{preview.from_workspaces}</span>
-                  {" "}workspace{preview.from_workspaces === 1 ? "" : "s"}.
+                  {" "}video{preview.from_workspaces === 1 ? "" : "s"}.
                 </div>
                 {(preview.skipped_existing || preview.skipped_not_done || preview.skipped_no_output) ? (
                   <ul className="text-xs text-muted-foreground list-disc list-inside">
@@ -158,10 +158,10 @@ export function CollectDialog({ open, onOpenChange }: Props) {
                       </li>
                     )}
                     {preview.skipped_not_done > 0 && (
-                      <li>{preview.skipped_not_done} workspace{preview.skipped_not_done === 1 ? "" : "s"} skipped — split not done</li>
+                      <li>{preview.skipped_not_done} video{preview.skipped_not_done === 1 ? "" : "s"} skipped — split not done</li>
                     )}
                     {preview.skipped_no_output > 0 && (
-                      <li>{preview.skipped_no_output} workspace{preview.skipped_no_output === 1 ? "" : "s"} skipped — no output files</li>
+                      <li>{preview.skipped_no_output} video{preview.skipped_no_output === 1 ? "" : "s"} skipped — no output files</li>
                     )}
                   </ul>
                 ) : null}

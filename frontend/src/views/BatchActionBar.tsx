@@ -24,7 +24,7 @@ export function BatchActionBar({
       <div className="text-sm font-medium">
         <span className="text-primary">{selected.size}</span> selected
         {anyLocked && (
-          <span className="ml-2 text-xs text-violet-300">(includes locked workspace)</span>
+          <span className="ml-2 text-xs text-violet-300">(includes locked video)</span>
         )}
       </div>
       <div className="flex-1" />
@@ -42,7 +42,7 @@ export function BatchActionBar({
         variant="destructive"
         disabled={anyLocked}
         onClick={() => {
-          if (window.confirm(`Delete ${selected.size} workspaces?`)) {
+          if (window.confirm(`Clean vsplit data for ${selected.size} video${selected.size === 1 ? "" : "s"}? (Source video files are never deleted.)`)) {
             onBeforeMutateWorkspaces(slugs)
             void api.batch.clean({ slugs }).then(onCleared)
           }
@@ -54,7 +54,7 @@ export function BatchActionBar({
       <ResetStageDialog
         open={resetOpen}
         onOpenChange={setResetOpen}
-        target={`${selected.size} workspace${selected.size === 1 ? "" : "s"}`}
+        target={`${selected.size} video${selected.size === 1 ? "" : "s"}`}
         onConfirm={(stage) => {
           onBeforeMutateWorkspaces(slugs)
           void api.batch.reset({ slugs, from: stage }).then(onCleared)

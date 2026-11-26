@@ -426,7 +426,7 @@ export function ConfigDrawer({
       loadedRawRef.current = nextLoaded
       setSavedRaw(nextLoaded)
       setRawConflict(false)
-      setNotice("Saved project config to .vsplit/config.yaml")
+      setNotice("Saved folder config to .vsplit/config.yaml")
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -580,8 +580,8 @@ export function ConfigDrawer({
           <DialogTitle className="text-base">Configuration</DialogTitle>
           <DialogDescription className="text-xs">
             {workingRoot
-              ? `Project: ${folderBasename(workingRoot)} (.vsplit/config.yaml) · Global app settings (app.toml)`
-              : "Global desktop settings (app.toml) · Open a project folder to edit pipeline settings"}
+              ? `Folder: ${folderBasename(workingRoot)} (.vsplit/config.yaml) · App settings (app.toml)`
+              : "App settings (app.toml) · Open a folder to edit detection & pipeline settings"}
           </DialogDescription>
         </DialogHeader>
 
@@ -590,7 +590,7 @@ export function ConfigDrawer({
           <aside className="w-48 shrink-0 border-r border-border bg-muted/20 p-3 flex flex-col gap-5 overflow-y-auto">
             <div className="space-y-1">
               <div className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
-                <span>Project</span>
+                <span>Folder</span>
                 {!workingRoot && <span className="font-normal normal-case opacity-70">none</span>}
               </div>
               <button
@@ -641,12 +641,12 @@ export function ConfigDrawer({
           {/* Right content pane */}
           <div className="flex-1 min-w-0 flex flex-col">
             <div className="flex-1 overflow-y-auto px-6 py-5">
-              {/* Empty state when on a Project tab without an open folder */}
+              {/* Empty state when on a Folder tab without an open folder */}
               {activeTab !== "desktop" && !workingRoot && (
                 <div className="h-full flex flex-col items-center justify-center text-center space-y-2 py-8">
-                  <div className="text-sm font-medium">No project folder open</div>
+                  <div className="text-sm font-medium">No folder open</div>
                   <p className="text-xs text-muted-foreground max-w-sm">
-                    Open a video folder first to configure per-project scene detection, pipeline defaults, or edit <code>.vsplit/config.yaml</code>.
+                    Open a video folder first to configure folder-specific scene detection, pipeline defaults, or edit <code>.vsplit/config.yaml</code>.
                   </p>
                   <Button
                     type="button"
@@ -660,9 +660,9 @@ export function ConfigDrawer({
                 </div>
               )}
 
-              {/* Loading state for project config */}
+              {/* Loading state for folder config */}
               {activeTab !== "desktop" && workingRoot && !activeCfg && !error && (
-                <div className="text-xs text-muted-foreground py-4">Loading project configuration…</div>
+                <div className="text-xs text-muted-foreground py-4">Loading folder configuration…</div>
               )}
 
               {/* Tab: Detection */}
@@ -882,7 +882,7 @@ export function ConfigDrawer({
                       </SettingRow>
                       <SettingRow
                         label="Collect destination"
-                        description="Default folder name (relative to project root) for collected clips."
+                        description="Default subfolder (relative to the open folder) for collected clips."
                       >
                         <Input
                           value={activeCfg.collect.destination}
@@ -920,7 +920,7 @@ export function ConfigDrawer({
                 <div className="h-full flex flex-col gap-3">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="text-sm font-semibold">Raw Project Config</h3>
+                      <h3 className="text-sm font-semibold">Raw Folder Config</h3>
                       <p className="text-xs text-muted-foreground font-mono">.vsplit/config.yaml</p>
                     </div>
                     <Button
@@ -963,7 +963,7 @@ export function ConfigDrawer({
                   <div className="pb-2 border-b border-border">
                     <h3 className="text-sm font-semibold">Desktop &amp; Media Tools</h3>
                     <p className="text-xs text-muted-foreground">
-                      Global machine preferences stored in <code>app.toml</code>. Applies across all projects.
+                      Global app preferences stored in <code>app.toml</code>. Applies to all folders.
                     </p>
                   </div>
 
@@ -1239,7 +1239,7 @@ export function ConfigDrawer({
                   </span>
                 ) : (
                   <span className="text-muted-foreground">
-                    {activeTab === "desktop" ? "Applies globally (app.toml)" : "Applies to current project"}
+                    {activeTab === "desktop" ? "Applies to all folders (app.toml)" : "Applies to current folder"}
                   </span>
                 )}
               </div>

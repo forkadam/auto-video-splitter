@@ -7,6 +7,7 @@ import {
   X,
   FolderDown,
   FolderOpen,
+  Play,
   Radar,
   Square,
   Stethoscope,
@@ -22,7 +23,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { WorkspaceRow } from "./views/WorkspaceRow"
-import { FilterBar, type FilterState } from "./views/FilterBar"
+import { FilterBar } from "./views/FilterBar"
+import { matchesFilter, sortWorkspaces, type FilterState } from "./lib/workspaceFilter"
 import { BatchActionBar } from "./views/BatchActionBar"
 import { LogDrawer } from "./views/LogDrawer"
 import { ConfigDrawer } from "./views/ConfigDrawer"
@@ -31,36 +33,7 @@ import { CollectDialog } from "./views/CollectDialog"
 import { DoctorDialog } from "./views/DoctorDialog"
 import { Logo } from "./components/Logo"
 
-const STAGES = ["probe", "detect", "preview", "review", "plan", "split", "verify"]
 const VIDEO_EXT_RE = /\.(mp4|mkv|mov|avi|m4v|webm)$/i
-
-function matchesFilter(ws: Workspace, f: FilterState): boolean {
-  if (f.status !== "any") {
-    if (f.status === "ignored") {
-      if (!ws.ignored) return false
-    } else if (f.status === "done") {
-      if (!ws.all_done) return false
-    } else if (f.status === "no_scenes") {
-      if (ws.scenes_found !== 0) return false
-    } else if (f.status === "awaiting_user") {
-      if (ws.scenes_found === 0) return false
-      if (!Object.values(ws.stages).includes("awaiting_user")) return false
-    } else if (!Object.values(ws.stages).includes(f.status)) {
-      return false
-    }
-  }
-  if (f.stage !== "any") {
-    const next = STAGES.find(
-      (s) => ws.stages[s] !== "done" && ws.stages[s] !== "skipped",
-    )
-    if (next !== f.stage) return false
-  }
-  if (f.slug) {
-    const pattern = new RegExp("^" + f.slug.replace(/\*/g, ".*").replace(/\?/g, ".") + "$")
-    if (!pattern.test(ws.slug)) return false
-  }
-  return true
-}
 
 function folderBasename(p: string): string {
   const parts = p.replace(/[/\\]+$/, "").split(/[/\\]/)
@@ -74,7 +47,8 @@ export default function App() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [expanded, setExpanded] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [filter, setFilter] = useState<FilterState>({ status: "any", stage: "any", slug: "" })
+  const [lastSelectedSlug, setLastSelectedSlug] = useState<string | null>(null)
+  const [filter, setFilter] = useState<FilterState>({ status: "any", stage: "any", slug: "", sort: "name" })
   const [logOpen, setLogOpen] = useState<{ slug: string; stage: string } | null>(null)
   const [configOpen, setConfigOpen] = useState(false)
   const [configRevision, setConfigRevision] = useState(0)
@@ -215,6 +189,7 @@ export default function App() {
     setPreviewSlug(null)
     setCutsSlug(null)
     setSelected(new Set())
+    setLastSelectedSlug(null)
     try {
       setBanner(null)
       const res = await api.project.open(target)
@@ -274,12 +249,47 @@ export default function App() {
     }
   }, [previewSlug])
 
+  const visible = sortWorkspaces(
+    workspaces.filter((w) => matchesFilter(w, filter)),
+    filter.sort,
+  )
+
+  const pendingRunnableSlugs = workspaces
+    .filter(
+      (w) =>
+        !w.ignored
+        && w.locked_by === null
+        && !w.all_done
+        && !Object.values(w.stages).includes("running")
+        && !Object.values(w.stages).includes("awaiting_user"),
+    )
+    .map((w) => w.slug)
+
   const toggleExpand = (slug: string) => setExpanded((e) => (e === slug ? null : slug))
-  const toggleSelect = (slug: string, on: boolean) => setSelected((s) => {
-    const next = new Set(s)
-    if (on) next.add(slug); else next.delete(slug)
-    return next
-  })
+  const toggleSelect = (slug: string, on: boolean, shiftKey = false) => {
+    if (shiftKey && lastSelectedSlug) {
+      const anchorIdx = visible.findIndex((w) => w.slug === lastSelectedSlug)
+      const targetIdx = visible.findIndex((w) => w.slug === slug)
+      if (anchorIdx !== -1 && targetIdx !== -1) {
+        const [start, end] = anchorIdx < targetIdx ? [anchorIdx, targetIdx] : [targetIdx, anchorIdx]
+        setSelected((s) => {
+          const next = new Set(s)
+          for (let i = start; i <= end; i++) {
+            if (on) next.add(visible[i].slug); else next.delete(visible[i].slug)
+          }
+          return next
+        })
+        setLastSelectedSlug(slug)
+        return
+      }
+    }
+    setSelected((s) => {
+      const next = new Set(s)
+      if (on) next.add(slug); else next.delete(slug)
+      return next
+    })
+    setLastSelectedSlug(slug)
+  }
 
   const anyRunning = useMemo(
     () => workspaces.some((w) => Object.values(w.stages).includes("running") || w.locked_by?.actor === "desktop"),
@@ -291,7 +301,6 @@ export default function App() {
     [workspaces],
   )
 
-  const visible = workspaces.filter((w) => matchesFilter(w, filter))
   const visibleSelectedCount = visible.reduce((n, w) => n + (selected.has(w.slug) ? 1 : 0), 0)
   const selectAllState: boolean | "indeterminate" =
     visible.length > 0 && visibleSelectedCount === visible.length ? true
@@ -322,7 +331,7 @@ export default function App() {
           <div className="text-center space-y-1">
             <div className="text-lg font-semibold">Drop folder or video clip</div>
             <div className="text-xs text-muted-foreground">
-              Folders switch project &amp; scan · Video files adopt directly
+              Folders open &amp; scan · Video files adopt directly
             </div>
           </div>
         </div>
@@ -370,7 +379,7 @@ export default function App() {
               <>
                 <span className="tabular-nums text-emerald-300">{workspaces.length}</span>
                 <span className="text-emerald-500/80">
-                  workspace{workspaces.length === 1 ? "" : "s"}
+                  video{workspaces.length === 1 ? "" : "s"}
                 </span>
               </>
             ) : (
@@ -473,7 +482,7 @@ export default function App() {
                 <div className="py-16 text-center space-y-4">
                   <div className="text-base font-medium">Choose a video folder to get started</div>
                   <p className="text-sm text-muted-foreground">
-                    Pick a folder, drop a folder or video clip onto this window, or select a recent project.
+                    Pick a folder, drop a folder or video clip onto this window, or select a recent folder.
                   </p>
                   <div className="flex justify-center gap-2">
                     <Button onClick={() => void handleOpenFolder()}>
@@ -488,10 +497,10 @@ export default function App() {
                 </div>
               ) : (
                 <>
-                  <FilterBar value={filter} onChange={setFilter} />
+                  <FilterBar value={filter} onChange={setFilter} workspaces={workspaces} />
                   {workspaces.length === 0 ? (
                     <div className="text-muted-foreground text-sm py-12 text-center space-y-3">
-                      <div>No workspaces adopted in this folder yet.</div>
+                      <div>No videos scanned in this folder yet.</div>
                       <Button size="sm" disabled={scanning} onClick={() => void handleScan()}>
                         <Radar className="h-3.5 w-3.5 mr-1.5" />
                         {scanning ? "Scanning…" : "Scan folder for videos"}
@@ -499,24 +508,44 @@ export default function App() {
                     </div>
                   ) : visible.length === 0 ? (
                     <div className="text-muted-foreground text-sm py-12 text-center">
-                      No workspaces match the current filter.
+                      No videos match the current filter.
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      <label className="flex items-center gap-2 px-4 py-1.5 text-xs text-muted-foreground cursor-pointer select-none w-fit">
-                        <Checkbox
-                          checked={selectAllState}
-                          onCheckedChange={toggleSelectAll}
-                          aria-label="Select all visible workspaces"
-                        />
-                        <span>
-                          {visibleSelectedCount === 0
-                            ? `Select all (${visible.length})`
-                            : visibleSelectedCount === visible.length
-                            ? `Deselect all (${visible.length})`
-                            : `${visibleSelectedCount} of ${visible.length} selected`}
-                        </span>
-                      </label>
+                      <div className="flex items-center justify-between gap-2 px-4 py-1">
+                        <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none w-fit">
+                          <Checkbox
+                            checked={selectAllState}
+                            onCheckedChange={toggleSelectAll}
+                            aria-label="Select all visible videos"
+                          />
+                          <span>
+                            {visibleSelectedCount === 0
+                              ? `Select all (${visible.length})`
+                              : visibleSelectedCount === visible.length
+                              ? `Deselect all (${visible.length})`
+                              : `${visibleSelectedCount} of ${visible.length} selected`}
+                          </span>
+                        </label>
+                        {pendingRunnableSlugs.length > 0 && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            className="h-7 px-2.5 text-xs"
+                            disabled={anyRunning}
+                            onClick={() =>
+                              void api.batch
+                                .run({ slugs: pendingRunnableSlugs })
+                                .then(refetch)
+                                .catch((e: unknown) => setBanner(e instanceof Error ? e.message : String(e)))
+                            }
+                            title="Run all pending or failed videos up to review/completion"
+                          >
+                            <Play className="h-3 w-3 mr-1.5" />
+                            Run pending ({pendingRunnableSlugs.length})
+                          </Button>
+                        )}
+                      </div>
                       {visible.map((ws) => (
                         <WorkspaceRow
                           key={ws.slug}
