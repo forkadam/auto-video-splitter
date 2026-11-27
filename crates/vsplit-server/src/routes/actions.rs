@@ -10,8 +10,9 @@ use vsplit_core::actions::{
 };
 use vsplit_core::collect::collect_outputs;
 use vsplit_core::config::load_resolved_config;
-use vsplit_core::locks::LockActor;
+use vsplit_core::locks::{LockActor, LockError};
 use vsplit_core::orchestrator::{dispatch, resolve_stages_to_run};
+use vsplit_core::rename::{apply_rename_plan, plan_renames, RenameError, RenameOptions};
 use vsplit_core::schemas::config::{CollectMode, VALID_CONCURRENCY_STAGES};
 use vsplit_core::toolchain::cached_toolchain;
 
@@ -61,6 +62,91 @@ pub struct CollectBody {
     pub force: bool,
     #[serde(default)]
     pub dry_run: bool,
+}
+
+#[derive(Deserialize, Default)]
+pub struct RenameBody {
+    pub glob: Option<String>,
+    pub recursive: Option<bool>,
+    pub format: Option<String>,
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
+fn map_rename_error(err: RenameError) -> ApiError {
+    match err {
+        RenameError::InvalidFormat { .. }
+        | RenameError::InvalidGlob { .. }
+        | RenameError::NotADirectory(_) => ApiError::unprocessable(err.to_string()),
+        RenameError::Lock(LockError::Held { slug, lease }) => ApiError {
+            status: axum::http::StatusCode::CONFLICT,
+            body: json!({
+                "detail": format!(
+                    "workspace {slug:?} is locked by {} (pid {}, stage {})",
+                    lease.actor.as_str(),
+                    lease.pid,
+                    lease.stage
+                ),
+                "locked_by": lease,
+            }),
+        },
+        RenameError::Toolchain(e) => {
+            ApiError::new(axum::http::StatusCode::SERVICE_UNAVAILABLE, e.to_string())
+        }
+        other => ApiError::internal(other.to_string()),
+    }
+}
+
+pub async fn rename_videos_route(
+    State(state): State<AppState>,
+    body: Option<Json<RenameBody>>,
+) -> Result<Json<Value>, ApiError> {
+    let root = require_working_root(&state)?;
+    let req = body.map(|b| b.0).unwrap_or_default();
+    let cfg =
+        load_resolved_config(&root, None).map_err(|e| ApiError::unprocessable(e.to_string()))?;
+    let toolchain = cached_toolchain();
+
+    let glob = req
+        .glob
+        .map(|g| g.trim().to_string())
+        .filter(|g| !g.is_empty());
+
+    let opts = RenameOptions {
+        recursive: req.recursive,
+        glob,
+        format: req.format,
+        dry_run: req.dry_run,
+    };
+
+    let plan = plan_renames(&root, &cfg, &toolchain, &opts)
+        .await
+        .map_err(map_rename_error)?;
+
+    if req.dry_run {
+        let report = plan.into_dry_run_report();
+        return Ok(Json(
+            serde_json::to_value(report).map_err(|e| ApiError::internal(e.to_string()))?,
+        ));
+    }
+
+    let affected_slugs = plan.affected_slugs();
+    let watch_guard = state.suspend_workspace_watches(&root, &affected_slugs);
+
+    let root_for_apply = root.clone();
+    let apply_res = tokio::task::spawn_blocking(move || {
+        let _guard = watch_guard;
+        apply_rename_plan(&root_for_apply, plan, LockActor::Desktop)
+    })
+    .await;
+
+    let report = apply_res
+        .map_err(|e| ApiError::internal(e.to_string()))?
+        .map_err(map_rename_error)?;
+
+    Ok(Json(
+        serde_json::to_value(report).map_err(|e| ApiError::internal(e.to_string()))?,
+    ))
 }
 
 pub async fn clean_one(

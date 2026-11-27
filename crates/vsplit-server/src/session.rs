@@ -18,6 +18,7 @@ use vsplit_core::watcher::{WatchEvent, WorkspaceWatcher};
 use crate::sse::{EventBroker, SseEvent};
 
 struct ActiveWatch {
+    watch_id: u64,
     watcher: WorkspaceWatcher,
     task: JoinHandle<()>,
 }
@@ -25,6 +26,32 @@ struct ActiveWatch {
 struct ProjectInner {
     working_root: Option<PathBuf>,
     watch: Option<ActiveWatch>,
+    next_watch_id: u64,
+}
+
+/// RAII guard that keeps a set of workspace slugs unwatched and suppressed from
+/// `sync_watches()` until dropped (even on error, panic, or task cancellation).
+pub struct WorkspaceWatchGuard {
+    project: Arc<Mutex<ProjectInner>>,
+    working_root: PathBuf,
+    watch_id: Option<u64>,
+    slugs: Vec<String>,
+}
+
+impl Drop for WorkspaceWatchGuard {
+    fn drop(&mut self) {
+        let Some(captured_id) = self.watch_id else {
+            return;
+        };
+        let mut guard = self.project.lock().unwrap_or_else(|e| e.into_inner());
+        if guard.working_root.as_deref() == Some(self.working_root.as_path()) {
+            if let Some(ref mut w) = guard.watch {
+                if w.watch_id == captured_id {
+                    w.watcher.resume_workspaces(&self.working_root, &self.slugs);
+                }
+            }
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -78,6 +105,7 @@ impl AppState {
             project: Arc::new(Mutex::new(ProjectInner {
                 working_root: None,
                 watch: None,
+                next_watch_id: 1,
             })),
         };
 
@@ -98,6 +126,43 @@ impl AppState {
         let root = guard.working_root.clone();
         if let (Some(ref r), Some(ref mut w)) = (root, guard.watch.as_mut()) {
             w.watcher.sync_watches(r);
+        }
+    }
+
+    pub fn suspend_workspace_watches(
+        &self,
+        working_root: &Path,
+        slugs: &[String],
+    ) -> WorkspaceWatchGuard {
+        let mut deduped: Vec<String> = slugs.to_vec();
+        deduped.sort();
+        deduped.dedup();
+        if deduped.is_empty() {
+            return WorkspaceWatchGuard {
+                project: Arc::clone(&self.project),
+                working_root: working_root.to_path_buf(),
+                watch_id: None,
+                slugs: Vec::new(),
+            };
+        }
+
+        let mut guard = self.project.lock().unwrap_or_else(|e| e.into_inner());
+        let watch_id = if guard.working_root.as_deref() == Some(working_root) {
+            if let Some(ref mut w) = guard.watch {
+                w.watcher.suppress_workspaces(working_root, &deduped);
+                Some(w.watch_id)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        WorkspaceWatchGuard {
+            project: Arc::clone(&self.project),
+            working_root: working_root.to_path_buf(),
+            watch_id,
+            slugs: deduped,
         }
     }
 
@@ -140,7 +205,13 @@ impl AppState {
 
         {
             let mut guard = self.project.lock().unwrap();
-            guard.watch = Some(ActiveWatch { watcher, task });
+            let watch_id = guard.next_watch_id;
+            guard.next_watch_id = guard.next_watch_id.wrapping_add(1);
+            guard.watch = Some(ActiveWatch {
+                watch_id,
+                watcher,
+                task,
+            });
         }
 
         let recent: Vec<String> = if persist_recent {

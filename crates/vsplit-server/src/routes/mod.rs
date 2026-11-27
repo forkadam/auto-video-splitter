@@ -121,6 +121,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/project/adopt-file", post(project::adopt_file))
         .route("/scan", post(project::scan))
+        .route("/rename", post(actions::rename_videos_route))
         .route("/jobs/cancel", post(project::cancel_jobs))
         .route("/jobs/active", get(project::active_jobs))
         .route("/workspaces", get(workspaces::list_workspaces))

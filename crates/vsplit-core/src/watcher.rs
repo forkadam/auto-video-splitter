@@ -8,7 +8,7 @@ use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult, Debouncer};
 use tokio::sync::mpsc;
 
-use crate::paths::{locks_dir, working_state_dir, workspaces_root};
+use crate::paths::{locks_dir, working_state_dir, workspace_dir, workspaces_root};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WatchEvent {
@@ -26,6 +26,7 @@ pub enum WatchEvent {
 pub struct WorkspaceWatcher {
     _native: Option<Debouncer<notify::RecommendedWatcher>>,
     stop_poll: Option<tokio::sync::watch::Sender<bool>>,
+    suppressed_slugs: HashMap<String, usize>,
 }
 
 impl Drop for WorkspaceWatcher {
@@ -69,7 +70,10 @@ fn classify_path(working_root: &Path, path: &Path) -> Option<WatchEvent> {
     }
 }
 
-fn collect_watch_dirs(working_root: &Path) -> Vec<PathBuf> {
+fn collect_watch_dirs(
+    working_root: &Path,
+    suppressed_slugs: &HashMap<String, usize>,
+) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     let vsplit = working_state_dir(working_root);
     if vsplit.is_dir() {
@@ -84,6 +88,11 @@ fn collect_watch_dirs(working_root: &Path) -> Vec<PathBuf> {
         dirs.push(ws_root.clone());
         if let Ok(entries) = fs::read_dir(&ws_root) {
             for entry in entries.flatten() {
+                if let Some(slug) = entry.file_name().to_str() {
+                    if suppressed_slugs.get(slug).copied().unwrap_or(0) > 0 {
+                        continue;
+                    }
+                }
                 let p = entry.path();
                 if p.is_dir() {
                     dirs.push(p.clone());
@@ -204,6 +213,8 @@ impl WorkspaceWatcher {
             },
         );
 
+        let suppressed_slugs = HashMap::new();
+
         let mut debouncer = match debouncer_res {
             Ok(d) => d,
             Err(err) => {
@@ -211,6 +222,7 @@ impl WorkspaceWatcher {
                 return Self {
                     _native: None,
                     stop_poll: Some(stop_tx),
+                    suppressed_slugs,
                 };
             }
         };
@@ -219,7 +231,7 @@ impl WorkspaceWatcher {
         let vsplit = working_state_dir(&working_root);
         let _ = fs::create_dir_all(&vsplit);
 
-        let dirs = collect_watch_dirs(&working_root);
+        let dirs = collect_watch_dirs(&working_root, &suppressed_slugs);
         for d in dirs {
             if let Err(err) = debouncer.watcher().watch(&d, RecursiveMode::NonRecursive) {
                 let msg = err.to_string();
@@ -227,6 +239,7 @@ impl WorkspaceWatcher {
                 return Self {
                     _native: None,
                     stop_poll: Some(stop_tx),
+                    suppressed_slugs,
                 };
             }
             watched.lock().unwrap().insert(d);
@@ -235,16 +248,108 @@ impl WorkspaceWatcher {
         Self {
             _native: Some(debouncer),
             stop_poll: None,
+            suppressed_slugs,
         }
     }
 
-    /// Register any newly-created workspace or `decisions/` directories non-recursively.
+    /// Register any newly-created workspace or `decisions/` directories non-recursively,
+    /// skipping workspaces that are currently suppressed.
     pub fn sync_watches(&mut self, working_root: &Path) {
         let Some(ref mut debouncer) = self._native else {
             return;
         };
-        for d in collect_watch_dirs(working_root) {
+        for d in collect_watch_dirs(working_root, &self.suppressed_slugs) {
             let _ = debouncer.watcher().watch(&d, RecursiveMode::NonRecursive);
         }
+    }
+
+    /// Increment ref-counted suppression for the given workspace slugs and unwatch their
+    /// directories (`<ws>/decisions` and `<ws>`) so Windows `ReadDirectoryChangesW` handles
+    /// do not block `fs::rename` and concurrent `sync_watches()` calls will not re-arm them.
+    pub fn suppress_workspaces(&mut self, working_root: &Path, slugs: &[String]) {
+        let mut unique: Vec<&str> = slugs.iter().map(String::as_str).collect();
+        unique.sort_unstable();
+        unique.dedup();
+        for slug in unique {
+            *self.suppressed_slugs.entry(slug.to_string()).or_insert(0) += 1;
+            if let Some(ref mut debouncer) = self._native {
+                let ws = workspace_dir(working_root, slug);
+                let _ = debouncer.watcher().unwatch(&ws.join("decisions"));
+                let _ = debouncer.watcher().unwatch(&ws);
+            }
+        }
+    }
+
+    /// Decrement ref-counted suppression for the given workspace slugs (removing entries at 0)
+    /// and re-synchronize watches so resumed or renamed workspaces are re-armed.
+    pub fn resume_workspaces(&mut self, working_root: &Path, slugs: &[String]) {
+        let mut unique: Vec<&str> = slugs.iter().map(String::as_str).collect();
+        unique.sort_unstable();
+        unique.dedup();
+        for slug in unique {
+            if let Some(count) = self.suppressed_slugs.get_mut(slug) {
+                if *count <= 1 {
+                    self.suppressed_slugs.remove(slug);
+                } else {
+                    *count -= 1;
+                }
+            }
+        }
+        self.sync_watches(working_root);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn collect_watch_dirs_skips_suppressed_slugs_and_decisions_subdirs() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+
+        let ws_a = workspace_dir(root, "alpha");
+        let ws_b = workspace_dir(root, "beta");
+        fs::create_dir_all(ws_a.join("decisions")).unwrap();
+        fs::create_dir_all(ws_b.join("decisions")).unwrap();
+        fs::create_dir_all(locks_dir(root)).unwrap();
+
+        let mut suppressed = HashMap::new();
+        suppressed.insert("alpha".to_string(), 1);
+        suppressed.insert("zero-count".to_string(), 0);
+
+        let dirs = collect_watch_dirs(root, &suppressed);
+        assert!(dirs.contains(&working_state_dir(root)));
+        assert!(dirs.contains(&locks_dir(root)));
+        assert!(dirs.contains(&workspaces_root(root)));
+        assert!(dirs.contains(&ws_b));
+        assert!(dirs.contains(&ws_b.join("decisions")));
+        assert!(!dirs.contains(&ws_a));
+        assert!(!dirs.contains(&ws_a.join("decisions")));
+    }
+
+    #[test]
+    fn suppress_and_resume_workspaces_is_refcounted() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+        let mut watcher = WorkspaceWatcher {
+            _native: None,
+            stop_poll: None,
+            suppressed_slugs: HashMap::new(),
+        };
+
+        let slugs = vec!["alpha".to_string(), "alpha".to_string()];
+        watcher.suppress_workspaces(root, &slugs);
+        assert_eq!(watcher.suppressed_slugs.get("alpha"), Some(&1));
+
+        watcher.suppress_workspaces(root, &["alpha".to_string()]);
+        assert_eq!(watcher.suppressed_slugs.get("alpha"), Some(&2));
+
+        watcher.resume_workspaces(root, &slugs);
+        assert_eq!(watcher.suppressed_slugs.get("alpha"), Some(&1));
+
+        watcher.resume_workspaces(root, &["alpha".to_string()]);
+        assert!(!watcher.suppressed_slugs.contains_key("alpha"));
     }
 }
