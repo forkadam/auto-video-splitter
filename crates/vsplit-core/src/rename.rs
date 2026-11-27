@@ -688,11 +688,7 @@ fn plan_directory_targets(
             });
             continue;
         }
-        let parent_dir = item
-            .abs_path
-            .parent()
-            .unwrap_or(working_root)
-            .to_path_buf();
+        let parent_dir = item.abs_path.parent().unwrap_or(working_root).to_path_buf();
         moving_by_dir.entry(parent_dir).or_default().push(item);
     }
 
@@ -1255,7 +1251,10 @@ pub fn apply_rename_plan(
             skipped.push(RenameSkippedItem {
                 path: item.plan.old_path,
                 reason: RenameSkipReason::Error,
-                detail: Some(format!("target path already exists: {}", item.plan.new_path)),
+                detail: Some(format!(
+                    "target path already exists: {}",
+                    item.plan.new_path
+                )),
             });
             continue;
         }
@@ -1499,7 +1498,9 @@ mod tests {
         assert_eq!(tag, "creation_time");
 
         // Missing or unparseable tags return None
-        assert!(extract_creation_timestamp(&json!({"format": {}}), DEFAULT_RENAME_FORMAT).is_none());
+        assert!(
+            extract_creation_timestamp(&json!({"format": {}}), DEFAULT_RENAME_FORMAT).is_none()
+        );
         assert!(extract_creation_timestamp(
             &json!({"format": {"tags": {"creation_time": "not-a-date"}}}),
             DEFAULT_RENAME_FORMAT

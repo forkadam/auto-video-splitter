@@ -106,16 +106,8 @@ async fn rename_unadopted_dry_run_glob_duplicates_idempotency_and_fallbacks() {
     let tc = cached_toolchain();
 
     // Two IMG clips sharing the exact same QuickTime capture second
-    make_clip_with_quicktime_date(
-        &tc,
-        &root.join("IMG_0001.MOV"),
-        "2026-05-01T14:23:05+0800",
-    );
-    make_clip_with_quicktime_date(
-        &tc,
-        &root.join("IMG_0002.MOV"),
-        "2026-05-01T14:23:05+0800",
-    );
+    make_clip_with_quicktime_date(&tc, &root.join("IMG_0001.MOV"), "2026-05-01T14:23:05+0800");
+    make_clip_with_quicktime_date(&tc, &root.join("IMG_0002.MOV"), "2026-05-01T14:23:05+0800");
     // Non-IMG clip with creation_time fallback
     let utc_ts = "2026-06-10T08:30:00Z";
     make_clip_with_creation_time(&tc, &root.join("VID_0003.mp4"), utc_ts);
@@ -228,16 +220,8 @@ async fn rename_adopted_workspace_sync_preserves_artifacts_and_respects_locks() 
     let cfg = Config::default();
     let tc = cached_toolchain();
 
-    make_clip_with_quicktime_date(
-        &tc,
-        &root.join("IMG_1001.MOV"),
-        "2026-07-04T19:45:12+0800",
-    );
-    make_clip_with_quicktime_date(
-        &tc,
-        &root.join("IMG_1002.MOV"),
-        "2026-07-04T20:00:00+0800",
-    );
+    make_clip_with_quicktime_date(&tc, &root.join("IMG_1001.MOV"), "2026-07-04T19:45:12+0800");
+    make_clip_with_quicktime_date(&tc, &root.join("IMG_1002.MOV"), "2026-07-04T20:00:00+0800");
 
     let scan = scan_folder(
         root,
@@ -555,7 +539,10 @@ async fn rename_cycle_swap_and_chain_tail_locked_between_plan_and_apply() {
         assert_eq!(partial_hash(&path_b).unwrap(), hash_b_orig);
         for entry in fs::read_dir(root).unwrap() {
             let name = entry.unwrap().file_name().to_string_lossy().into_owned();
-            assert!(!name.starts_with(".vsplit-rename-tmp-"), "leftover temp file: {name}");
+            assert!(
+                !name.starts_with(".vsplit-rename-tmp-"),
+                "leftover temp file: {name}"
+            );
         }
     }
 }
@@ -567,7 +554,11 @@ async fn rename_isolates_corrupt_file_ffprobe_errors_from_valid_siblings() {
     let cfg = Config::default();
     let tc = cached_toolchain();
 
-    fs::write(root.join("CORRUPT.mp4"), b"definitely not a valid mp4 stream").unwrap();
+    fs::write(
+        root.join("CORRUPT.mp4"),
+        b"definitely not a valid mp4 stream",
+    )
+    .unwrap();
     make_clip_with_quicktime_date(&tc, &root.join("VALID.MOV"), "2026-10-01T08:15:30+0800");
 
     let report = rename_videos(root, &cfg, &tc, &RenameOptions::default(), LockActor::Cli)

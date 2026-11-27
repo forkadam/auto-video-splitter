@@ -139,11 +139,7 @@ async fn rename_api_auth_validation_and_windows_safe_watcher_e2e() {
     let tc = cached_toolchain();
 
     // Prepare IMG_0055.MOV with QuickTime creationdate + other.mp4 to verify glob filtering
-    make_clip_with_quicktime_date(
-        &tc,
-        &root.join("IMG_0055.MOV"),
-        "2025-10-05T16:40:12+0800",
-    );
+    make_clip_with_quicktime_date(&tc, &root.join("IMG_0055.MOV"), "2025-10-05T16:40:12+0800");
     make_clip_with_quicktime_date(&tc, &root.join("other.mp4"), "2025-10-06T09:15:00+0800");
 
     // Adopt both clips before starting server so WorkspaceWatcher actively watches their workspace dirs
