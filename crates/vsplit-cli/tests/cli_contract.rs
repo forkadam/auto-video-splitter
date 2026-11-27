@@ -5,6 +5,7 @@ use std::process::{Command, Stdio};
 use serde_json::Value;
 use tempfile::TempDir;
 use vsplit_core::locks::{try_acquire_workspace_lock, LockActor, LockLease};
+use vsplit_core::toolchain::cached_toolchain;
 
 fn vsplit_bin() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_vsplit"))
@@ -273,4 +274,124 @@ fn cli_run_exits_one_on_stage_failure() {
     let val: Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(val["ok"], false);
     assert_eq!(val["code"], "STAGE_FAILED");
+}
+
+#[test]
+fn rename_invalid_format_exits_usage_error_json() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path();
+
+    let (code, stdout, _) = run_cli(root, &["--json", "rename", "--format", "%Y:%m"]);
+    assert_eq!(
+        code, 2,
+        "expected exit 2 INVALID_ARGUMENT, got {code}: {stdout}"
+    );
+    let val: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(val["ok"], false);
+    assert_eq!(val["code"], "INVALID_ARGUMENT");
+}
+
+#[test]
+fn rename_empty_dir_dry_run_json_ok() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path();
+
+    let (code, stdout, _) = run_cli(root, &["--json", "rename", "--dry-run"]);
+    assert_eq!(code, 0, "rename --dry-run failed: {stdout}");
+    let val: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(val["ok"], true);
+    assert_eq!(val["dry_run"], true);
+    assert_eq!(val["counts"]["renamed"], 0);
+    assert_eq!(val["counts"]["workspaces_synced"], 0);
+    assert_eq!(val["counts"]["skipped_already_named"], 0);
+    assert_eq!(val["counts"]["skipped_no_date"], 0);
+    assert_eq!(val["counts"]["skipped_locked"], 0);
+    assert_eq!(val["counts"]["skipped_error"], 0);
+    assert!(val["renamed"].as_array().unwrap().is_empty());
+    assert!(val["skipped"].as_array().unwrap().is_empty());
+    assert!(val["warnings"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn rename_cli_dry_run_and_apply_with_glob_and_workspace_sync() {
+    let tc = cached_toolchain();
+    let Ok(ffmpeg) = tc.ffmpeg_path() else {
+        return;
+    };
+    if tc.ffprobe_path().is_err() {
+        return;
+    }
+
+    let dir = TempDir::new().unwrap();
+    let root = dir.path();
+    let src_clip = root.join("IMG_0042.MOV");
+    let expected_clip = root.join("2025-08-20 11-22-33.MOV");
+
+    let status = Command::new(ffmpeg)
+        .args([
+            "-y",
+            "-v",
+            "error",
+            "-i",
+            &fixture_clip("short.mp4").to_string_lossy(),
+            "-c",
+            "copy",
+            "-map_metadata",
+            "-1",
+            "-movflags",
+            "use_metadata_tags",
+            "-metadata",
+            "com.apple.quicktime.creationdate=2025-08-20T11:22:33+0800",
+            &src_clip.to_string_lossy(),
+        ])
+        .status()
+        .expect("spawn ffmpeg");
+    assert!(status.success(), "ffmpeg failed creating {src_clip:?}");
+
+    // Scan to adopt IMG_0042.MOV into a workspace
+    let (code, stdout, _) = run_cli(root, &["--json", "scan"]);
+    assert_eq!(code, 0, "scan failed: {stdout}");
+    let scan_val: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(scan_val["ok"], true);
+    assert_eq!(scan_val["adopted"].as_array().unwrap().len(), 1);
+
+    // Dry-run rename with --glob "IMG*"
+    let (code, stdout, _) = run_cli(root, &["--json", "rename", "--glob", "IMG*", "--dry-run"]);
+    assert_eq!(code, 0, "rename --dry-run failed: {stdout}");
+    let dry_val: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(dry_val["ok"], true);
+    assert_eq!(dry_val["dry_run"], true);
+    assert_eq!(dry_val["counts"]["renamed"], 1);
+    assert_eq!(dry_val["renamed"][0]["old_path"], "IMG_0042.MOV");
+    assert_eq!(dry_val["renamed"][0]["new_path"], "2025-08-20 11-22-33.MOV");
+    assert!(src_clip.exists(), "dry-run must not rename source file");
+    assert!(
+        !expected_clip.exists(),
+        "dry-run must not create target file"
+    );
+
+    // Apply rename with --glob "IMG*"
+    let (code, stdout, _) = run_cli(root, &["--json", "rename", "--glob", "IMG*"]);
+    assert_eq!(code, 0, "rename apply failed: {stdout}");
+    let apply_val: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(apply_val["ok"], true);
+    assert_eq!(apply_val["dry_run"], false);
+    assert_eq!(apply_val["counts"]["renamed"], 1);
+    assert_eq!(apply_val["counts"]["workspaces_synced"], 1);
+    assert_eq!(apply_val["renamed"][0]["new_slug"], "2025-08-20-11-22-33");
+    assert!(
+        expected_clip.exists(),
+        "renamed clip should exist at {expected_clip:?}"
+    );
+    assert!(
+        !src_clip.exists(),
+        "original clip should have been moved away from {src_clip:?}"
+    );
+
+    // Status reflects synced workspace slug
+    let (code, stdout, _) = run_cli(root, &["--json", "status"]);
+    assert_eq!(code, 0, "status failed: {stdout}");
+    let st: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(st["ok"], true);
+    assert_eq!(st["workspaces"][0]["slug"], "2025-08-20-11-22-33");
 }

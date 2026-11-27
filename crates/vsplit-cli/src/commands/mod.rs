@@ -6,6 +6,7 @@ pub mod doctor;
 pub mod ignore;
 pub mod logs;
 pub mod one;
+pub mod rename;
 pub mod reset;
 pub mod run;
 pub mod scan;

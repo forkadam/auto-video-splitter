@@ -64,6 +64,8 @@ struct Cli {
 enum Command {
     /// Discover video files and adopt them into workspaces
     Scan(commands::scan::ScanArgs),
+    /// Rename video files by embedded creation date and sync adopted workspaces
+    Rename(commands::rename::RenameArgs),
     /// Show pipeline status (compact summary by default under --json; use --full for full manifests)
     Status(commands::status::StatusArgs),
     /// Advance workspaces through pipeline stages
@@ -138,6 +140,7 @@ async fn main() -> ExitCode {
 
     let result = match cli.command {
         Command::Scan(args) => commands::scan::execute(&global, args),
+        Command::Rename(args) => commands::rename::execute(&global, args).await,
         Command::Status(args) => commands::status::execute(&global, args),
         Command::Run(args) => commands::run::execute(&global, args).await,
         Command::Approve(args) => commands::approve::execute(&global, args),
