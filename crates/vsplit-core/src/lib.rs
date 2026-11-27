@@ -14,6 +14,7 @@ pub mod manifest;
 pub mod orchestrator;
 pub mod paths;
 pub mod process;
+pub mod rename;
 pub mod scan;
 pub mod schemas;
 pub mod slugify;
