@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { api, type Workspace } from "@/lib/api"
+import { api, type RenameReport, type Workspace } from "@/lib/api"
 import { initBootstrap, isTauriRuntime, pickFolderNative } from "@/lib/bootstrap"
 import { useSSE, type DashboardEvent } from "@/lib/sse"
 import {
+  CalendarClock,
   Settings,
   X,
   FolderDown,
@@ -30,6 +31,7 @@ import { LogDrawer } from "./views/LogDrawer"
 import { ConfigDrawer } from "./views/ConfigDrawer"
 import { CutsDrawer } from "./views/CutsDrawer"
 import { CollectDialog } from "./views/CollectDialog"
+import { RenameDialog } from "./views/RenameDialog"
 import { DoctorDialog } from "./views/DoctorDialog"
 import { Logo } from "./components/Logo"
 
@@ -56,6 +58,7 @@ export default function App() {
   const [externalCutsEvent, setExternalCutsEvent] = useState<{ slug: string; hash: string } | null>(null)
   const [previewSlug, setPreviewSlug] = useState<string | null>(null)
   const [collectOpen, setCollectOpen] = useState(false)
+  const [renameOpen, setRenameOpen] = useState(false)
   const [doctorOpen, setDoctorOpen] = useState(false)
   const [scanning, setScanning] = useState(false)
   const [dragActive, setDragActive] = useState(false)
@@ -125,6 +128,7 @@ export default function App() {
             const dropped = ev.payload.paths?.[0]
             if (!dropped) return
             setPreviewSlug(null)
+            setRenameOpen(false)
             try {
               if (VIDEO_EXT_RE.test(dropped)) {
                 const res = await api.project.adoptFile(dropped)
@@ -167,6 +171,7 @@ export default function App() {
       setWorkingRoot(ev.working_root)
       setPreviewSlug(null)
       setCutsSlug(null)
+      setRenameOpen(false)
       refetch()
     } else if (ev.type === "cuts_changed") {
       setExternalCutsEvent({ slug: ev.slug, hash: ev.hash })
@@ -188,6 +193,7 @@ export default function App() {
     if (!target) return
     setPreviewSlug(null)
     setCutsSlug(null)
+    setRenameOpen(false)
     setSelected(new Set())
     setLastSelectedSlug(null)
     try {
@@ -242,12 +248,49 @@ export default function App() {
     }
   }
 
-  // Release Windows file handles on preview/<slug>/source-proxy.mp4 before clean/reset.
+  // Release Windows file handles on preview/<slug>/source-proxy.mp4 before clean/reset/rename.
   const handleBeforeMutateWorkspace = useCallback((slugs: string[]) => {
     if (previewSlug && slugs.includes(previewSlug)) {
       setPreviewSlug(null)
     }
-  }, [previewSlug])
+    if (cutsSlug && slugs.includes(cutsSlug)) {
+      setCutsSlug(null)
+    }
+    if (logOpen && slugs.includes(logOpen.slug)) {
+      setLogOpen(null)
+    }
+  }, [previewSlug, cutsSlug, logOpen])
+
+  const handleRenamed = useCallback((report: RenameReport) => {
+    const oldSlugs = new Set(
+      report.renamed
+        .map((item) => item.old_slug)
+        .filter((slug): slug is string => slug !== null),
+    )
+    if (oldSlugs.size > 0) {
+      setSelected((prev) => {
+        const next = new Set(prev)
+        for (const slug of oldSlugs) next.delete(slug)
+        return next
+      })
+      setExpanded((prev) => (prev && oldSlugs.has(prev) ? null : prev))
+      setLastSelectedSlug((prev) => (prev && oldSlugs.has(prev) ? null : prev))
+    }
+    const parts = [
+      `Renamed ${report.counts.renamed} file${report.counts.renamed === 1 ? "" : "s"}`,
+    ]
+    if (report.counts.workspaces_synced > 0) {
+      parts.push(
+        `${report.counts.workspaces_synced} workspace${report.counts.workspaces_synced === 1 ? "" : "s"} synced`,
+      )
+    }
+    let message = parts.join(" · ")
+    if (report.warnings.length > 0) {
+      message += ` — Warning: ${report.warnings.join("; ")}`
+    }
+    setBanner(message)
+    refetch()
+  }, [refetch])
 
   const visible = sortWorkspaces(
     workspaces.filter((w) => matchesFilter(w, filter)),
@@ -428,6 +471,15 @@ export default function App() {
               >
                 <Radar className={`h-3.5 w-3.5 mr-1.5 ${scanning ? "animate-spin" : ""}`} />
                 {scanning ? "Scanning…" : "Scan"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setRenameOpen(true)}
+                title="Rename source videos on disk using embedded creation-date metadata"
+              >
+                <CalendarClock className="h-4 w-4 mr-1.5" />
+                Rename…
               </Button>
               <Button
                 variant="ghost"
@@ -619,6 +671,13 @@ export default function App() {
         onRecentFoldersChange={setRecentFolders}
       />
       <CollectDialog open={collectOpen} onOpenChange={setCollectOpen} />
+      <RenameDialog
+        open={renameOpen}
+        workingRoot={workingRoot}
+        onOpenChange={setRenameOpen}
+        onBeforeMutateWorkspaces={handleBeforeMutateWorkspace}
+        onRenamed={handleRenamed}
+      />
       <DoctorDialog open={doctorOpen} onOpenChange={setDoctorOpen} />
     </div>
   )

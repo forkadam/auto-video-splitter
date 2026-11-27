@@ -99,6 +99,7 @@ vsplit [GLOBAL OPTIONS] <COMMAND> [ARGS]
 | Command | Description |
 |---|---|
 | `vsplit scan [PATH]` | Adopt videos (`--recursive/--no-recursive`, `--auto-relocate/--no-relocate`, `--dry-run`) |
+| `vsplit rename [PATH]` | Rename source videos by embedded creation date (`--glob`, `--recursive/--no-recursive`, `--format`, `--dry-run`) |
 | `vsplit status [SLUG]` | Compact pipeline status (`--awaiting-user`, `--failed`, `--full`) |
 | `vsplit run [SLUG_GLOB]` | Advance stages (`--only`, `--from`, `--through`, `--filter K=V`, `--concurrency S=N`, `--dry-run`) |
 | `vsplit approve [SLUG_GLOB]` | Approve `awaiting_user` workspaces (`--filter K=V`) |

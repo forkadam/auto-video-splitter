@@ -99,6 +99,45 @@ export type ScanReport = {
   dry_run: boolean
 }
 
+export type RenameRequest = {
+  glob?: string
+  recursive?: boolean
+  format?: string
+  dry_run?: boolean
+}
+
+export type RenameItem = {
+  old_path: string
+  new_path: string
+  source_tag: string
+  old_slug: string | null
+  new_slug: string | null
+}
+
+export type RenameSkippedItem = {
+  path: string
+  reason: "already_named" | "no_creation_date" | "workspace_locked" | "error"
+  detail?: string | null
+}
+
+export type RenameCounts = {
+  renamed: number
+  workspaces_synced: number
+  skipped_already_named: number
+  skipped_no_date: number
+  skipped_locked: number
+  skipped_error: number
+}
+
+export type RenameReport = {
+  dry_run: boolean
+  format: string
+  renamed: RenameItem[]
+  skipped: RenameSkippedItem[]
+  warnings: string[]
+  counts: RenameCounts
+}
+
 export type DoctorReport = {
   ok: boolean
   ffmpeg: { ok: boolean; path: string | null; source: string | null; version: string | null; hint: string | null }
@@ -126,6 +165,8 @@ export const api = {
   },
   scan: (body: { path?: string; recursive?: boolean; relocate_policy?: "auto" | "skip" | "report"; dry_run?: boolean } = {}) =>
     jsonRequest<ScanReport>("POST", "/api/scan", body),
+  rename: (body: RenameRequest = {}) =>
+    jsonRequest<RenameReport>("POST", "/api/rename", body),
   jobs: {
     cancel: (slug?: string) =>
       jsonRequest<{ cancelled: number }>("POST", "/api/jobs/cancel", slug ? { slug } : {}),
