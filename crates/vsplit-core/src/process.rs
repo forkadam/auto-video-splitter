@@ -81,7 +81,7 @@ const APPIMAGE_SINGLE_PATH_VARS: &[&str] = &[
 fn appimage_env_overrides(
     program: &Path,
     appdir: Option<&Path>,
-    get_var: impl Fn(&str) -> Option<std::ffi::OsString>,
+    get_var: impl Fn(&'static str) -> Option<std::ffi::OsString>,
 ) -> Vec<(&'static str, Option<std::ffi::OsString>)> {
     let Some(appdir) = appdir.filter(|p| !p.as_os_str().is_empty()) else {
         return Vec::new();
@@ -448,11 +448,10 @@ mod tests {
             ),
         ]);
 
-        let overrides = appimage_env_overrides(
-            Path::new("/usr/bin/gst-inspect-1.0"),
-            Some(appdir),
-            |k| vars.get(k).cloned(),
-        );
+        let overrides =
+            appimage_env_overrides(Path::new("/usr/bin/gst-inspect-1.0"), Some(appdir), |k| {
+                vars.get(k).cloned()
+            });
         let map: HashMap<&str, Option<OsString>> = overrides.into_iter().collect();
 
         assert_eq!(map.get("LD_LIBRARY_PATH"), Some(&None));
