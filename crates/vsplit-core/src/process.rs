@@ -50,6 +50,114 @@ impl ProcessError {
     }
 }
 
+#[cfg(target_os = "linux")]
+const APPIMAGE_PATH_LIST_VARS: &[&str] = &[
+    "LD_LIBRARY_PATH",
+    "GST_PLUGIN_SYSTEM_PATH",
+    "GST_PLUGIN_SYSTEM_PATH_1_0",
+    "GST_PLUGIN_PATH",
+    "GST_PLUGIN_PATH_1_0",
+    "GI_TYPELIB_PATH",
+    "XDG_DATA_DIRS",
+];
+
+#[cfg(target_os = "linux")]
+const APPIMAGE_SINGLE_PATH_VARS: &[&str] = &[
+    "GST_PLUGIN_SCANNER",
+    "GST_PLUGIN_SCANNER_1_0",
+    "GIO_MODULE_DIR",
+    "GSETTINGS_SCHEMA_DIR",
+    "GTK_PATH",
+    "GTK_EXE_PREFIX",
+    "GTK_DATA_PREFIX",
+    "GTK_IM_MODULE_FILE",
+    "GDK_PIXBUF_MODULE_FILE",
+];
+
+/// Compute environment overrides needed when spawning a host binary from inside a
+/// Linux AppImage so host tools (`ffmpeg`, `ffprobe`, `gst-inspect-1.0`) do not
+/// dynamically link against bundled AppImage libraries or use AppImage plugin paths.
+#[cfg(target_os = "linux")]
+fn appimage_env_overrides(
+    program: &Path,
+    appdir: Option<&Path>,
+    get_var: impl Fn(&str) -> Option<std::ffi::OsString>,
+) -> Vec<(&'static str, Option<std::ffi::OsString>)> {
+    let Some(appdir) = appdir.filter(|p| !p.as_os_str().is_empty()) else {
+        return Vec::new();
+    };
+    if program.starts_with(appdir) {
+        return Vec::new();
+    }
+
+    let mut overrides = Vec::new();
+    for &key in APPIMAGE_PATH_LIST_VARS {
+        let Some(val) = get_var(key) else {
+            continue;
+        };
+        let parts: Vec<std::path::PathBuf> = std::env::split_paths(&val).collect();
+        let filtered: Vec<std::path::PathBuf> = parts
+            .iter()
+            .filter(|p| !p.as_os_str().is_empty() && !p.starts_with(appdir))
+            .cloned()
+            .collect();
+        if filtered.len() != parts.len() {
+            if filtered.is_empty() {
+                overrides.push((key, None));
+            } else if let Ok(joined) = std::env::join_paths(filtered) {
+                overrides.push((key, Some(joined)));
+            }
+        }
+    }
+
+    for &key in APPIMAGE_SINGLE_PATH_VARS {
+        let Some(val) = get_var(key) else {
+            continue;
+        };
+        if Path::new(&val).starts_with(appdir) {
+            overrides.push((key, None));
+        }
+    }
+
+    overrides
+}
+
+#[cfg(target_os = "linux")]
+fn sanitize_appimage_env_std(cmd: &mut std::process::Command, program: &Path) {
+    let appdir = std::env::var_os("APPDIR").map(std::path::PathBuf::from);
+    for (key, val) in appimage_env_overrides(program, appdir.as_deref(), std::env::var_os) {
+        match val {
+            Some(v) => {
+                cmd.env(key, v);
+            }
+            None => {
+                cmd.env_remove(key);
+            }
+        }
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn sanitize_appimage_env_std(_cmd: &mut std::process::Command, _program: &Path) {}
+
+#[cfg(target_os = "linux")]
+fn sanitize_appimage_env_tokio(cmd: &mut Command, program: &Path) {
+    let appdir = std::env::var_os("APPDIR").map(std::path::PathBuf::from);
+    for (key, val) in appimage_env_overrides(program, appdir.as_deref(), std::env::var_os) {
+        match val {
+            Some(v) => {
+                cmd.env(key, v);
+            }
+            None => {
+                cmd.env_remove(key);
+            }
+        }
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn sanitize_appimage_env_tokio(_cmd: &mut Command, _program: &Path) {}
+
 #[cfg(windows)]
 pub fn apply_no_window_std(cmd: &mut std::process::Command) {
     use std::os::windows::process::CommandExt;
@@ -201,6 +309,7 @@ pub async fn run_command<S: AsRef<OsStr>>(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     apply_no_window_tokio(&mut cmd);
+    sanitize_appimage_env_tokio(&mut cmd, program);
 
     let mut child = cmd.spawn().map_err(|e| ProcessError::Spawn {
         program: program_str.clone(),
@@ -297,6 +406,7 @@ pub fn run_probe_sync<S: AsRef<OsStr>>(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     apply_no_window_std(&mut cmd);
+    sanitize_appimage_env_std(&mut cmd, program);
     let out = cmd.output()?;
     let stderr_slice = if out.stderr.len() > MAX_STDERR_BYTES {
         &out.stderr[out.stderr.len() - MAX_STDERR_BYTES..]
@@ -308,4 +418,66 @@ pub fn run_probe_sync<S: AsRef<OsStr>>(
         String::from_utf8_lossy(stderr_slice).into_owned(),
         out.status.code(),
     ))
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::ffi::OsString;
+
+    #[test]
+    fn appimage_env_strips_mount_entries_for_host_binary() {
+        let appdir = Path::new("/tmp/.mount_vsplitXYZ");
+        let vars: HashMap<&str, OsString> = HashMap::from([
+            (
+                "LD_LIBRARY_PATH",
+                OsString::from("/tmp/.mount_vsplitXYZ/usr/lib/:/tmp/.mount_vsplitXYZ/lib/:"),
+            ),
+            (
+                "GST_PLUGIN_SYSTEM_PATH_1_0",
+                OsString::from("/tmp/.mount_vsplitXYZ/usr/lib/gstreamer-1.0:"),
+            ),
+            (
+                "XDG_DATA_DIRS",
+                OsString::from("/tmp/.mount_vsplitXYZ/usr/share:/usr/share:/usr/local/share"),
+            ),
+            (
+                "GIO_MODULE_DIR",
+                OsString::from("/tmp/.mount_vsplitXYZ//usr/lib/gio/modules"),
+            ),
+        ]);
+
+        let overrides = appimage_env_overrides(
+            Path::new("/usr/bin/gst-inspect-1.0"),
+            Some(appdir),
+            |k| vars.get(k).cloned(),
+        );
+        let map: HashMap<&str, Option<OsString>> = overrides.into_iter().collect();
+
+        assert_eq!(map.get("LD_LIBRARY_PATH"), Some(&None));
+        assert_eq!(map.get("GST_PLUGIN_SYSTEM_PATH_1_0"), Some(&None));
+        assert_eq!(
+            map.get("XDG_DATA_DIRS"),
+            Some(&Some(OsString::from("/usr/share:/usr/local/share")))
+        );
+        assert_eq!(map.get("GIO_MODULE_DIR"), Some(&None));
+    }
+
+    #[test]
+    fn appimage_env_preserves_env_for_internal_binary() {
+        let appdir = Path::new("/tmp/.mount_vsplitXYZ");
+        let vars: HashMap<&str, OsString> = HashMap::from([(
+            "LD_LIBRARY_PATH",
+            OsString::from("/tmp/.mount_vsplitXYZ/usr/lib/"),
+        )]);
+
+        let overrides = appimage_env_overrides(
+            Path::new("/tmp/.mount_vsplitXYZ/usr/bin/gst-inspect-1.0"),
+            Some(appdir),
+            |k| vars.get(k).cloned(),
+        );
+
+        assert!(overrides.is_empty());
+    }
 }

@@ -62,15 +62,31 @@ pub struct DoctorReport {
     pub platform: PlatformInfo,
 }
 
+#[cfg(target_os = "linux")]
+fn has_bundled_appimage_libav(appdir: Option<&Path>) -> bool {
+    let Some(appdir) = appdir.filter(|p| !p.as_os_str().is_empty()) else {
+        return false;
+    };
+    let candidates = [
+        appdir.join("usr/lib/gstreamer-1.0/libgstlibav.so"),
+        appdir.join("usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstlibav.so"),
+        appdir.join("usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstlibav.so"),
+    ];
+    candidates.iter().any(|p| p.is_file())
+}
+
 fn check_gstreamer() -> GstreamerStatus {
     #[cfg(target_os = "linux")]
     {
         use crate::process::run_probe_sync;
-        let avdec = find_all_in_path("gst-inspect-1.0")
-            .first()
-            .and_then(|bin| run_probe_sync(bin, &["avdec_h264"]).ok())
-            .map(|(_, _, code)| code == Some(0))
-            .unwrap_or(false);
+        let appdir = std::env::var_os("APPDIR").map(PathBuf::from);
+        let avdec = has_bundled_appimage_libav(appdir.as_deref())
+            || find_all_in_path("gst-inspect-1.0").iter().any(|bin| {
+                run_probe_sync(bin, &["avdec_h264"])
+                    .ok()
+                    .map(|(_, _, code)| code == Some(0))
+                    .unwrap_or(false)
+            });
         let fuse2 = Path::new("/usr/lib/libfuse.so.2").exists()
             || Path::new("/lib/x86_64-linux-gnu/libfuse.so.2").exists()
             || !find_all_in_path("fusermount").is_empty();
@@ -235,5 +251,22 @@ pub fn run_doctor(working_root: Option<&Path>, app_cfg: &AppConfig) -> DoctorRep
             wayland_session,
             wayland_disable_dmabuf: app_cfg.wayland_disable_dmabuf,
         },
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn detects_bundled_appimage_libav_plugin() {
+        let dir = TempDir::new().unwrap();
+        assert!(!has_bundled_appimage_libav(Some(dir.path())));
+
+        let plugin_dir = dir.path().join("usr/lib/gstreamer-1.0");
+        std::fs::create_dir_all(&plugin_dir).unwrap();
+        std::fs::write(plugin_dir.join("libgstlibav.so"), b"").unwrap();
+        assert!(has_bundled_appimage_libav(Some(dir.path())));
     }
 }
